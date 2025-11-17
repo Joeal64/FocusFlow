@@ -1,12 +1,12 @@
 package com.example.project_focusflow
 
-import android.content.Context
-import android.os.VibrationEffect
-import android.os.Vibrator
+
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +22,7 @@ import kotlinx.coroutines.delay
 import kotlin.math.*
 
 @Composable
-fun PomodoroTimer(startMinutes: Int) {
+fun PomodoroTimer(startMinutes: Int,onBack: () -> Unit) {
     val context = LocalContext.current
 
     var baseSeconds by remember { mutableStateOf(startMinutes * 60) } // selected time
@@ -32,11 +32,13 @@ fun PomodoroTimer(startMinutes: Int) {
     var knobAngle by remember {
         mutableStateOf((startMinutes / 60f) * 360f)
     }
-
-    fun vibrate() {
-        val vib = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        vib.vibrate(VibrationEffect.createOneShot(400, VibrationEffect.DEFAULT_AMPLITUDE))
+    LaunchedEffect(Unit) {
+        SensorEvents.onShake = {
+            // pause the timer on shake
+            running = false
+        }
     }
+
 
     LaunchedEffect(running) {
         while (running && remaining > 0) {
@@ -45,7 +47,6 @@ fun PomodoroTimer(startMinutes: Int) {
         }
         if (remaining == 0 && running) {
             running = false
-            vibrate()
         }
     }
 
@@ -100,6 +101,13 @@ fun PomodoroTimer(startMinutes: Int) {
                     knobAngle = (startMinutes / 60f) * 360f
                 }
             ) { Text("Reset") }
+
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = { onBack() }
+        ) {
+            Text("Back")
         }
     }
 }
@@ -111,8 +119,9 @@ fun Dial(
     remainingTimeFormatted: String
 ) {
     var dragging by remember { mutableStateOf(false) }
+    val textColor = MaterialTheme.colorScheme.onBackground
 
-    Canvas(
+            Canvas(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(true) {
@@ -172,7 +181,7 @@ fun Dial(
             isAntiAlias = true
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = 90f
-            color = android.graphics.Color.BLACK
+            color = textColor.toArgb()
         }
 
         drawContext.canvas.nativeCanvas.drawText(
