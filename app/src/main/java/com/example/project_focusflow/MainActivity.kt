@@ -1,11 +1,13 @@
 package com.example.project_focusflow
 
-import android.content.Context
+import android.bluetooth.BluetoothDevice
+import android.content.*
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -22,26 +24,31 @@ import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
-    // Sensor variables
+    // shake detector variables
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
-
-    // values used to detect a shake
     private var lastAcceleration = SensorManager.GRAVITY_EARTH
     private var currentAcceleration = SensorManager.GRAVITY_EARTH
     private var shake = 0f
 
+    // bluetooth receiver
+    private lateinit var bluetoothReceiver: BroadcastReceiver
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // setup shake sensor
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        // setup bluetooth receiver
+        setupBluetoothReceiver()
 
         setContent {
 
             var showTimer by remember { mutableStateOf(false) }
             var minutes by remember { mutableStateOf(25) }
-            var darkTheme by remember { mutableStateOf(true) } // default all dark
+            var darkTheme by remember { mutableStateOf(true) }
 
             ProjectFocusFlowTheme(darkTheme = darkTheme) {
                 Surface(
@@ -68,6 +75,46 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun setupBluetoothReceiver() {
+
+        bluetoothReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                    ?: return
+
+                when (intent.action) {
+
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                        Toast.makeText(
+                            ctx,
+                            "${device.name} connected, starting focus",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                        SensorEvents.onBluetoothConnected?.invoke()
+                    }
+
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        Toast.makeText(
+                            ctx,
+                            "${device.name} disconnected, pausing",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                        SensorEvents.onBluetoothDisconnected?.invoke()
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+
+        registerReceiver(bluetoothReceiver, filter)
+    }
+
     override fun onResume() {
         super.onResume()
         accelerometer?.also { sensor ->
@@ -84,20 +131,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sensorManager.unregisterListener(this)
     }
 
-    // Called whenever the accelerometer value changes
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(bluetoothReceiver)
+    }
+
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
 
-            // overall acceleration strength
-            currentAcceleration = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+            currentAcceleration = sqrt((x*x + y*y + z*z).toDouble()).toFloat()
             val delta = currentAcceleration - lastAcceleration
-            shake = shake * 0.9f + delta  // simple smoothing
+            shake = shake * 0.9f + delta
 
             if (shake > 12) {
-                // Call whatever the timer registered
                 SensorEvents.onShake?.invoke()
             }
 
@@ -106,7 +156,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // not needed for this case
+        // nothing needed
     }
 }
 
@@ -134,14 +184,13 @@ fun FocusFlowScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "Dark mode",
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.width(8.dp))
+
             Switch(
                 checked = darkTheme,
                 onCheckedChange = onDarkThemeChange

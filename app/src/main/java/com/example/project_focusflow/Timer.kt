@@ -1,6 +1,5 @@
 package com.example.project_focusflow
 
-
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -22,24 +21,44 @@ import kotlinx.coroutines.delay
 import kotlin.math.*
 
 @Composable
-fun PomodoroTimer(startMinutes: Int,onBack: () -> Unit) {
-    val context = LocalContext.current
+fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
 
-    var baseSeconds by remember { mutableStateOf(startMinutes * 60) } // selected time
-    var remaining by remember { mutableStateOf(baseSeconds) }         // countdown time
+    var baseSeconds by remember { mutableStateOf(startMinutes * 60) }
+    var remaining by remember { mutableStateOf(baseSeconds) }
     var running by remember { mutableStateOf(false) }
 
+    // knob angle 0..360
     var knobAngle by remember {
         mutableStateOf((startMinutes / 60f) * 360f)
     }
+
+    // listen to shake + bluetooth events
+// listen to shake + bluetooth events
     LaunchedEffect(Unit) {
+
         SensorEvents.onShake = {
-            // pause the timer on shake
+            running = false
+        }
+
+        SensorEvents.onBluetoothConnected = {
+            running = true
+        }
+
+        SensorEvents.onBluetoothDisconnected = {
             running = false
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            SensorEvents.onShake = null
+            SensorEvents.onBluetoothConnected = null
+            SensorEvents.onBluetoothDisconnected = null
+        }
+    }
 
+
+    // Timer countdown loop
     LaunchedEffect(running) {
         while (running && remaining > 0) {
             delay(1000)
@@ -101,12 +120,11 @@ fun PomodoroTimer(startMinutes: Int,onBack: () -> Unit) {
                     knobAngle = (startMinutes / 60f) * 360f
                 }
             ) { Text("Reset") }
-
         }
+
         Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = { onBack() }
-        ) {
+
+        Button(onClick = { onBack() }) {
             Text("Back")
         }
     }
@@ -121,7 +139,7 @@ fun Dial(
     var dragging by remember { mutableStateOf(false) }
     val textColor = MaterialTheme.colorScheme.onBackground
 
-            Canvas(
+    Canvas(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(true) {
