@@ -19,6 +19,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.*
+import androidx.room.Room
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 
 @Composable
 fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
@@ -31,8 +35,18 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
     var knobAngle by remember {
         mutableStateOf((startMinutes / 60f) * 360f)
     }
+    val context = LocalContext.current
 
-    // listen to shake + bluetooth events
+    val db = remember {
+        Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "focus_db"
+        ).build()
+    }
+
+    val dao = db.focusSessionDao()
+
 // listen to shake + bluetooth events
     LaunchedEffect(Unit) {
 
@@ -64,10 +78,23 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
             delay(1000)
             remaining -= 1
         }
+
         if (remaining == 0 && running) {
             running = false
+
+            val sessionMinutes = baseSeconds / 60
+
+            withContext(Dispatchers.IO) {
+                dao.insert(
+                    FocusSession(
+                        durationMinutes = sessionMinutes,
+                        completedAt = System.currentTimeMillis()
+                    )
+                )
+            }
         }
     }
+
 
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
 

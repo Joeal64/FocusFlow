@@ -191,7 +191,7 @@ fun FocusFlowScreen(
                 onCheckedChange = onDarkThemeChange
             )
         }
-        
+
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,
