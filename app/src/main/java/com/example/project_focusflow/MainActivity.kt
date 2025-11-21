@@ -168,54 +168,62 @@ fun FocusFlowScreen(
 ) {
     var studyMinutes by remember { mutableStateOf("") }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(24.dp)
     ) {
 
-        Text(
-            text = "FocusFlow",
-            fontSize = 32.sp,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Top-right dark mode toggle
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = "Dark mode",
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 14.sp
             )
             Spacer(modifier = Modifier.width(8.dp))
-
             Switch(
                 checked = darkTheme,
                 onCheckedChange = onDarkThemeChange
             )
         }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        TextField(
-            value = studyMinutes,
-            onValueChange = { studyMinutes = it },
-            placeholder = { Text("Enter minutes you want to study for") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(
-            onClick = {
-                val mins = studyMinutes.toIntOrNull() ?: 25
-                onStart(mins)
-            }
+        
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("Start Timer")
+
+            Text(
+                text = "FocusFlow",
+                fontSize = 32.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            TextField(
+                value = studyMinutes,
+                onValueChange = { studyMinutes = it },
+                placeholder = { Text("Enter minutes you want to study for") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = {
+                    val mins = studyMinutes.toIntOrNull() ?: 25
+                    onStart(mins)
+                }
+            ) {
+                Text("Start Timer")
+            }
         }
     }
 }
