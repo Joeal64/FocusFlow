@@ -214,7 +214,7 @@ fun Dial(
         val ky = center.y + radius * sin(rad)
 
         drawCircle(
-            color = Color.Red,
+            color = Color.Black,
             radius = 18.dp.toPx(),
             center = Offset(kx.toFloat(), ky.toFloat())
         )
