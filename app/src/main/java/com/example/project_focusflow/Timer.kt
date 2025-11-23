@@ -1,5 +1,8 @@
 package com.example.project_focusflow
 
+import androidx.compose.material3.Switch
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -25,7 +28,7 @@ import kotlinx.coroutines.withContext
 
 
 @Composable
-fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
+fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit, darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
 
     var baseSeconds by remember { mutableStateOf(startMinutes * 60) }
     var remaining by remember { mutableStateOf(baseSeconds) }
@@ -103,6 +106,26 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "FocusFlow",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Switch(
+                checked = darkTheme,
+                onCheckedChange = onDarkThemeChange
+            )
+        }
 
         Dial(
             knobAngle = knobAngle,
