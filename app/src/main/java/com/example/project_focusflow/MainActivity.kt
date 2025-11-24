@@ -1,5 +1,10 @@
 package com.example.project_focusflow
 
+import android.Manifest
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import android.bluetooth.BluetoothDevice
 import android.content.*
 import android.hardware.Sensor
@@ -47,7 +52,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         // setup bluetooth receiver
         setupBluetoothReceiver()
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                    6001
+                )
+            }
+        }
         setContent {
 
             var showTimer by remember { mutableStateOf(false) }
@@ -85,8 +102,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         bluetoothReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                    ?: return
+                val device =
+                    intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                        ?: return
 
                 when (intent.action) {
 
@@ -118,10 +136,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         }
 
-        registerReceiver(bluetoothReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Supports Android 13+
+            registerReceiver(bluetoothReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(bluetoothReceiver, filter)
+        }
     }
 
-    override fun onResume() {
+        override fun onResume() {
         super.onResume()
         accelerometer?.also { sensor ->
             sensorManager.registerListener(

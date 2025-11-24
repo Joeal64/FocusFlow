@@ -67,6 +67,7 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit, darkTheme: Boolean,
         }
     }
 
+
     DisposableEffect(Unit) {
         onDispose {
             SensorEvents.onShake = null
