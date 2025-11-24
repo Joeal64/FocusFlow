@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.project_focusflow.ui.theme.ProjectFocusFlowTheme
 import kotlin.math.sqrt
+import com.example.project_focusflow.R
+
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
@@ -195,6 +197,7 @@ fun FocusFlowScreen(
             Switch(
                 checked = darkTheme,
                 onCheckedChange = onDarkThemeChange
+
             )
         }
 

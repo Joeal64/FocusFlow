@@ -1,6 +1,7 @@
 <resources>
-    <string name="app_name">Project-FocusFlow</string>
+    <string name="app_name">FocusFlow</string>
     <string name="dark_mode">Dark mode</string>
+    <string name="light_mode">Light mode</string>
     <string name="enter_minutes">Enter minutes you want to study for</string>
     <string name="start_timer">Start Timer</string>
     <string name="minutes_error">Please enter a valid number of minutes.</string>
