@@ -16,6 +16,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,7 +60,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     if (showTimer) {
                         PomodoroTimer(
                             startMinutes = minutes,
-                            onBack = { showTimer = false }
+                            onBack = { showTimer = false },
+                            darkTheme = darkTheme,
+                            onDarkThemeChange = { darkTheme = it }
                         )
                     } else {
                         FocusFlowScreen(
@@ -167,6 +171,8 @@ fun FocusFlowScreen(
     onDarkThemeChange: (Boolean) -> Unit
 ) {
     var studyMinutes by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
@@ -181,7 +187,7 @@ fun FocusFlowScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Dark mode",
+                text = stringResource(R.string.dark_mode),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 14.sp
             )
@@ -199,7 +205,7 @@ fun FocusFlowScreen(
         ) {
 
             Text(
-                text = "FocusFlow",
+                text = stringResource(R.string.app_name),
                 fontSize = 32.sp,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -208,22 +214,40 @@ fun FocusFlowScreen(
 
             TextField(
                 value = studyMinutes,
-                onValueChange = { studyMinutes = it },
-                placeholder = { Text("Enter minutes you want to study for") },
+                onValueChange = {
+                    studyMinutes = it
+                    error = null
+                },
+                placeholder = { Text(stringResource(R.string.enter_minutes)) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = error != null,
+                supportingText = {
+                    if (error != null) {
+                        Text(
+                            text = error!!,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
                 onClick = {
-                    val mins = studyMinutes.toIntOrNull() ?: 25
-                    onStart(mins)
+                    val mins = studyMinutes.toIntOrNull()
+
+                    if (mins == null || mins <= 0) {
+                        error = context.getString(R.string.minutes_error)
+                    } else {
+                        onStart(mins)
+                    }
                 }
             ) {
-                Text("Start Timer")
+                Text(stringResource(R.string.start_timer))
             }
+
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.example.project_focusflow
 
+import androidx.compose.material3.Switch
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -16,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.*
@@ -25,7 +29,7 @@ import kotlinx.coroutines.withContext
 
 
 @Composable
-fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
+fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit, darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
 
     var baseSeconds by remember { mutableStateOf(startMinutes * 60) }
     var remaining by remember { mutableStateOf(baseSeconds) }
@@ -101,8 +105,41 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+        ) {
+
+            Text(
+                text = stringResource(R.string.app_name),
+                fontSize = 24.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.align(Alignment.TopStart)
+            )
+
+
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.dark),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Switch(
+                    checked = darkTheme,
+                    onCheckedChange = onDarkThemeChange
+                )
+            }
+        }
+
+
+        Spacer(modifier = Modifier.height(40.dp))
 
         Dial(
             knobAngle = knobAngle,
@@ -128,14 +165,14 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
             Button(
                 onClick = { running = true },
                 enabled = !running
-            ) { Text("Start") }
+            ) { Text(stringResource(R.string.start)) }
 
             Spacer(modifier = Modifier.width(16.dp))
 
             Button(
                 onClick = { running = false },
                 enabled = running
-            ) { Text("Pause") }
+            ) { Text(stringResource(R.string.pause)) }
 
             Spacer(modifier = Modifier.width(16.dp))
 
@@ -146,13 +183,13 @@ fun PomodoroTimer(startMinutes: Int, onBack: () -> Unit) {
                     remaining = baseSeconds
                     knobAngle = (startMinutes / 60f) * 360f
                 }
-            ) { Text("Reset") }
+            ) { Text(stringResource(R.string.reset)) }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(onClick = { onBack() }) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }

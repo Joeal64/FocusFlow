@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <resources>
+        <string name="app_name">FocusFlow</string>
+
+        <string name="enter_minutes">Ingresa los minutos que deseas estudiar</string>
+        <string name="start_timer">Iniciar temporizador</string>
+
+        <string name="start">Iniciar</string>
+        <string name="pause">Pausar</string>
+        <string name="reset">Reiniciar</string>
+        <string name="back">Atrás</string>
+
+        <string name="dark_mode">Modo oscuro</string>
+        <string name="dark">Oscuro</string>
+
+        <string name="streak">Racha:</string>
+
+        <string name="notif_title">¡Bien hecho!</string>
+        <string name="notif_body">Tu sesión de estudio ha terminado.</string>
+
+        <string name="timer_dial_desc">Rueda del temporizador. Arrastra para ajustar los minutos.</string>
+
+        <string name="minutes_error">Por favor ingresa un número válido de minutos.</string>
+    </resources>
+
+</resources>
