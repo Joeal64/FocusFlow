@@ -25,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.*
 import androidx.room.Room
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun PomodoroTimer(
@@ -36,27 +38,33 @@ fun PomodoroTimer(
     var baseSeconds by remember { mutableStateOf(startMinutes * 60) }
     var remaining by remember { mutableStateOf(baseSeconds) }
     var running by remember { mutableStateOf(false) }
-
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
 
     val context = LocalContext.current
-
     val db = remember {
         Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "focus_db"
-        ).build()
+        ).fallbackToDestructiveMigration().build()
     }
-
     val dao = db.focusSessionDao()
+
+    var streakToday by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val s = dao.getStreak(today)
+            streakToday = s?.achieved ?: false
+        }
+    }
 
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
         SensorEvents.onBluetoothDisconnected = { running = false }
     }
-
 
     DisposableEffect(Unit) {
         onDispose {
@@ -75,6 +83,7 @@ fun PomodoroTimer(
         if (remaining == 0 && running) {
             running = false
             val sessionMinutes = baseSeconds / 60
+
             withContext(Dispatchers.IO) {
                 dao.insert(
                     FocusSession(
@@ -82,6 +91,15 @@ fun PomodoroTimer(
                         completedAt = System.currentTimeMillis()
                     )
                 )
+
+                val minutesToday = dao.getMinutesToday() ?: 0
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val s = dao.getStreak(today)
+
+                if (minutesToday >= 25) {
+                    dao.setStreak(DailyStreak(date = today, achieved = true))
+                    streakToday = true
+                }
             }
         }
     }
@@ -89,18 +107,25 @@ fun PomodoroTimer(
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
 
     Box(modifier = Modifier.fillMaxSize()) {
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter)
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                fontSize = 22.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.align(Alignment.TopStart)
-            )
+            Row(modifier = Modifier.align(Alignment.TopStart)) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    fontSize = 22.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                if (streakToday) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("🔥", fontSize = 22.sp)
+                }
+            }
+
             Row(
                 modifier = Modifier.align(Alignment.TopEnd),
                 verticalAlignment = Alignment.CenterVertically
@@ -185,10 +210,8 @@ fun Dial(
                 detectDragGestures(
                     onDragStart = { offset ->
                         if (running) return@detectDragGestures
-                        val w = size.width
-                        val h = size.height
-                        val cx = w / 2f
-                        val cy = h / 2f
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
                         val dx = offset.x - cx
                         val dy = offset.y - cy
                         val deg = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
@@ -197,13 +220,10 @@ fun Dial(
                     },
                     onDrag = { change, _ ->
                         if (running) return@detectDragGestures
-                        val w = size.width
-                        val h = size.height
-                        val cx = w / 2f
-                        val cy = h / 2f
-                        val pos = change.position
-                        val dx = pos.x - cx
-                        val dy = pos.y - cy
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        val dx = change.position.x - cx
+                        val dy = change.position.y - cy
                         val deg = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
                         val normalized = (deg + 450f) % 360f
                         onKnobAngleChange(normalized)
@@ -213,9 +233,7 @@ fun Dial(
             }
     ) {
         val stroke = 20.dp.toPx()
-        val w = size.width
-        val h = size.height
-        val radius = min(w, h) / 2f
+        val radius = min(size.width, size.height) / 2f
 
         drawArc(
             color = Color.LightGray,
