@@ -71,10 +71,11 @@ fun PomodoroTimer(
             delay(1000)
             remaining--
         }
-
         if (remaining == 0 && running) {
             running = false
+
             val sessionMinutes = baseSeconds / 60
+
             withContext(Dispatchers.IO) {
                 dao.insert(
                     FocusSession(
@@ -83,7 +84,14 @@ fun PomodoroTimer(
                     )
                 )
             }
+
+            // navigate to SummaryActivity and send data
+            val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
+                putExtra("SESSION_MINUTES", sessionMinutes)
+            }
+            context.startActivity(intent)
         }
+
     }
 
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
