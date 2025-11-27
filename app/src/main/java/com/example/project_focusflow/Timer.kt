@@ -101,7 +101,7 @@ fun PomodoroTimer(
                     streakToday = true
                 }
             }
-
+            showSessionFinishedNotification(context, sessionMinutes)
             // navigate to SummaryActivity and send data
             val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
                 putExtra("SESSION_MINUTES", sessionMinutes)
