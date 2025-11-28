@@ -385,12 +385,3 @@ fun Dial(
     }
 }
 
-/**
- * **MERGE CONFLICT RESOLVED**: Added a placeholder for the notification function.
- * You should replace this with the actual implementation from your teammate.
- */
-private fun showSessionFinishedNotification(context: Context, sessionMinutes: Int) {
-    // TODO: Implement the actual notification logic using NotificationManager.
-    // This will likely require setting up a notification channel on Android 8.0+.
-    println("Session finished! Duration: $sessionMinutes minutes. (Notification placeholder)")
-}
