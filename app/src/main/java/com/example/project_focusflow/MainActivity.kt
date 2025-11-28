@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             var showTimer by remember { mutableStateOf(false) }
             var minutes by remember { mutableStateOf(25) }
             var darkTheme by remember { mutableStateOf(true) }
+            var focusLock by remember { mutableStateOf(true) }
 
             ProjectFocusFlowTheme(darkTheme = darkTheme) {
                 Surface(
@@ -83,7 +84,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             startMinutes = minutes,
                             onBack = { showTimer = false },
                             darkTheme = darkTheme,
-                            onDarkThemeChange = { darkTheme = it }
+                            onDarkThemeChange = { darkTheme = it },
                         )
                     } else {
                         FocusFlowScreen(
@@ -92,7 +93,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 showTimer = true
                             },
                             darkTheme = darkTheme,
-                            onDarkThemeChange = { darkTheme = it }
+                            onDarkThemeChange = { darkTheme = it },
+                            focusLockEnabled = focusLock,
+                            onFocusLockChange = { focusLock = it }
                         )
                     }
                 }
@@ -198,7 +201,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 fun FocusFlowScreen(
     onStart: (Int) -> Unit,
     darkTheme: Boolean,
-    onDarkThemeChange: (Boolean) -> Unit
+    onDarkThemeChange: (Boolean) -> Unit,
+    focusLockEnabled: Boolean,
+    onFocusLockChange: (Boolean) -> Unit
 ) {
     var studyMinutes by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -240,6 +245,7 @@ fun FocusFlowScreen(
                 fontSize = 32.sp,
                 color = MaterialTheme.colorScheme.onBackground
             )
+
 
             Spacer(modifier = Modifier.height(32.dp))
 

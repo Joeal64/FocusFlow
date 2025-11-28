@@ -1,14 +1,12 @@
 package com.example.project_focusflow
 
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.toArgb
+import android.content.Context
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,17 +14,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import androidx.compose.ui.unit.sp
+import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.*
-import androidx.room.Room
 import java.text.SimpleDateFormat
 import java.util.*
+
+private enum class ConfirmAction {
+    PAUSE, RESET
+}
 
 @Composable
 fun PomodoroTimer(
@@ -40,6 +44,15 @@ fun PomodoroTimer(
     var running by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
 
+    // For confirmation dialog
+    var showConfirm by remember { mutableStateOf(false) }
+    var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
+
+    // Block system back while timer is running
+    BackHandler(enabled = running) {
+        // Do nothing – consumes back press
+    }
+
     val context = LocalContext.current
     val db = remember {
         Room.databaseBuilder(
@@ -52,6 +65,7 @@ fun PomodoroTimer(
 
     var streakToday by remember { mutableStateOf(false) }
 
+    // Load streak status
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -60,6 +74,7 @@ fun PomodoroTimer(
         }
     }
 
+    // Sensor events
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
@@ -74,6 +89,7 @@ fun PomodoroTimer(
         }
     }
 
+    // Timer loop
     LaunchedEffect(running) {
         while (running && remaining > 0) {
             delay(1000)
@@ -94,34 +110,59 @@ fun PomodoroTimer(
 
                 val minutesToday = dao.getMinutesToday() ?: 0
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val s = dao.getStreak(today)
 
                 if (minutesToday >= 25) {
                     dao.setStreak(DailyStreak(date = today, achieved = true))
                     streakToday = true
                 }
             }
+
+            // Vibrate when session finishes
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(android.os.VibratorManager::class.java).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    android.os.VibrationEffect.createOneShot(
+                        400,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(400)
+            }
+
+            // Notification
             showSessionFinishedNotification(context, sessionMinutes)
-            // navigate to SummaryActivity and send data
+
+            // Navigate to summary screen
             val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
                 putExtra("SESSION_MINUTES", sessionMinutes)
             }
             context.startActivity(intent)
         }
-
     }
 
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        Box(
+        // Top bar: title + streak on left, dark mode on right
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(modifier = Modifier.align(Alignment.TopStart)) {
+            // Left: title + streak
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.app_name),
                     fontSize = 22.sp,
@@ -133,10 +174,8 @@ fun PomodoroTimer(
                 }
             }
 
-            Row(
-                modifier = Modifier.align(Alignment.TopEnd),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Right: dark mode
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.dark),
                     color = MaterialTheme.colorScheme.onBackground,
@@ -176,16 +215,25 @@ fun PomodoroTimer(
                     Text(stringResource(R.string.start))
                 }
                 Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = { running = false }, enabled = running) {
-                    Text(stringResource(R.string.pause))
-                }
-                Spacer(modifier = Modifier.width(16.dp))
+
+                // Pause – ask for confirmation
                 Button(
                     onClick = {
-                        running = false
-                        baseSeconds = startMinutes * 60
-                        remaining = baseSeconds
-                        knobAngle = (startMinutes / 60f) * 360f
+                        confirmAction = ConfirmAction.PAUSE
+                        showConfirm = true
+                    },
+                    enabled = running
+                ) {
+                    Text(stringResource(R.string.pause))
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Reset – ask for confirmation
+                Button(
+                    onClick = {
+                        confirmAction = ConfirmAction.RESET
+                        showConfirm = true
                     }
                 ) {
                     Text(stringResource(R.string.reset))
@@ -194,13 +242,77 @@ fun PomodoroTimer(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Button(onClick = onBack) {
+            // Back disabled while running
+            Button(
+                onClick = onBack,
+                enabled = !running
+            ) {
                 Text(stringResource(R.string.back))
             }
+
+            if (running) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Focus mode is ON. Pause or reset to exit.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
+        // 🔔 Confirmation dialog for Pause / Reset
+        if (showConfirm && confirmAction != null) {
+            val message = when (confirmAction) {
+                ConfirmAction.PAUSE ->
+                    "Are you sure you want to pause your focus session?"
+                ConfirmAction.RESET ->
+                    "Are you sure you want to reset the timer?"
+                null -> ""
+            }
+
+            AlertDialog(
+                onDismissRequest = {
+                    showConfirm = false
+                    confirmAction = null
+                },
+                title = { Text(text = "Confirm") },
+                text = { Text(text = message) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            when (confirmAction) {
+                                ConfirmAction.PAUSE -> {
+                                    running = false
+                                }
+                                ConfirmAction.RESET -> {
+                                    running = false
+                                    baseSeconds = startMinutes * 60
+                                    remaining = baseSeconds
+                                    knobAngle = (startMinutes / 60f) * 360f
+                                }
+                                null -> {}
+                            }
+                            showConfirm = false
+                            confirmAction = null
+                        }
+                    ) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showConfirm = false
+                            confirmAction = null
+                        }
+                    ) {
+                        Text("No")
+                    }
+                }
+            )
         }
     }
 }
-
 @Composable
 fun Dial(
     knobAngle: Float,
