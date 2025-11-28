@@ -10,4 +10,9 @@
     <string name="pause">Pause</string>
     <string name="reset">Reset</string>
     <string name="back">Back</string>
+    <string name="notif_title_session">Session complete</string>
+    <string name="notif_body_session">Well done! You studied for %1$d minutes.</string>
+    <string name="notif_title_bt">Focus paused</string>
+    <string name="notif_body_bt">Bluetooth disconnected. Your timer has been paused.</string>
+
 </resources>

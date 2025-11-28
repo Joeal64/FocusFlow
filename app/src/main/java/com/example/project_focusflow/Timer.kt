@@ -1,5 +1,6 @@
 package com.example.project_focusflow
 
+import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -118,6 +119,10 @@ fun PomodoroTimer(
             } else if (running && remaining == 0) {
                 // Timer finished, handle completion logic.
                 val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
+
+                // **MERGE CONFLICT RESOLVED HERE**: Call the notification function.
+                showSessionFinishedNotification(context, sessionMinutes)
+
                 withContext(Dispatchers.IO) {
                     val minutesBeforeSession = dao.getMinutesToday() ?: 0
                     val streaksBeforeSession = minutesBeforeSession / STREAK_INTERVAL_MINUTES
@@ -378,4 +383,14 @@ fun Dial(
             center = Offset(kx.toFloat(), ky.toFloat())
         )
     }
+}
+
+/**
+ * **MERGE CONFLICT RESOLVED**: Added a placeholder for the notification function.
+ * You should replace this with the actual implementation from your teammate.
+ */
+private fun showSessionFinishedNotification(context: Context, sessionMinutes: Int) {
+    // TODO: Implement the actual notification logic using NotificationManager.
+    // This will likely require setting up a notification channel on Android 8.0+.
+    println("Session finished! Duration: $sessionMinutes minutes. (Notification placeholder)")
 }

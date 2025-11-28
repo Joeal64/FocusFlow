@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
+        createFocusNotificationChannel(this)
+
         // setup bluetooth receiver
         setupBluetoothReceiver()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -126,7 +128,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         ).show()
 
                         SensorEvents.onBluetoothDisconnected?.invoke()
+
+                        // show notification when bluetooth disconnected
+                        showBluetoothPausedNotification(ctx)
                     }
+
                 }
             }
         }
