@@ -1,32 +1,46 @@
 package com.example.project_focusflow
 
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlin.math.*
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.room.Room
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+
+// The number of minutes required to achieve one streak point.
+private const val STREAK_INTERVAL_MINUTES = 25
 
 @Composable
 fun PomodoroTimer(
@@ -50,23 +64,44 @@ fun PomodoroTimer(
     }
     val dao = db.focusSessionDao()
 
-    var streakToday by remember { mutableStateOf(false) }
+    var streakCount by remember { mutableStateOf(0) }
+    var timerCompleted by remember { mutableStateOf(false) }
+    var completionCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // This function fetches the latest streak count from the database.
+    val refreshStreakCount = {
+        coroutineScope.launch(Dispatchers.IO) {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val s = dao.getStreak(today)
-            streakToday = s?.achieved ?: false
+            val currentCount = s?.count ?: 0
+            withContext(Dispatchers.Main) {
+                streakCount = currentCount
+            }
         }
     }
 
-    LaunchedEffect(Unit) {
+    // Fetches streak count when the screen loads and when it becomes visible again.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                refreshStreakCount()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Activates and cleans up sensor event listeners.
+    DisposableEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
         SensorEvents.onBluetoothDisconnected = { running = false }
-    }
 
-    DisposableEffect(Unit) {
         onDispose {
             SensorEvents.onShake = null
             SensorEvents.onBluetoothConnected = null
@@ -74,65 +109,62 @@ fun PomodoroTimer(
         }
     }
 
+    // Main timer countdown logic.
     LaunchedEffect(running) {
-        while (running && remaining > 0) {
-            delay(1000)
-            remaining--
-        }
-        if (remaining == 0 && running) {
-            running = false
-
-            val sessionMinutes = baseSeconds / 60
-
-            withContext(Dispatchers.IO) {
-                dao.insert(
-                    FocusSession(
-                        durationMinutes = sessionMinutes,
-                        completedAt = System.currentTimeMillis()
-                    )
-                )
-
-                val minutesToday = dao.getMinutesToday() ?: 0
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val s = dao.getStreak(today)
-
-                if (minutesToday >= 25) {
-                    dao.setStreak(DailyStreak(date = today, achieved = true))
-                    streakToday = true
+        while (true) {
+            if (running && remaining > 0) {
+                delay(1000)
+                remaining--
+            } else if (running && remaining == 0) {
+                // Timer finished, handle completion logic.
+                val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
+                withContext(Dispatchers.IO) {
+                    val minutesBeforeSession = dao.getMinutesToday() ?: 0
+                    val streaksBeforeSession = minutesBeforeSession / STREAK_INTERVAL_MINUTES
+                    dao.insert(FocusSession(durationMinutes = sessionMinutes, completedAt = System.currentTimeMillis()))
+                    val minutesAfterSession = dao.getMinutesToday() ?: 0
+                    val streaksAfterSession = minutesAfterSession / STREAK_INTERVAL_MINUTES
+                    if (streaksAfterSession > streaksBeforeSession) {
+                        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        dao.setStreak(DailyStreak(date = today, count = streaksAfterSession))
+                    }
                 }
+                // Stop the timer and trigger the completion UI.
+                running = false
+                timerCompleted = true
+                completionCount++ // This ensures the navigation effect re-runs
+            } else {
+                // If not running, idle to prevent a busy-wait loop.
+                delay(100)
             }
-
-            // navigate to SummaryActivity and send data
-            val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
-                putExtra("SESSION_MINUTES", sessionMinutes)
-            }
-            context.startActivity(intent)
         }
-
     }
 
-    val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
+
+    val formattedTime = "%02d:%02d".format(remaining / 60, remaining % 60)
 
     Box(modifier = Modifier.fillMaxSize()) {
-
+        // Top bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter)
         ) {
-            Row(modifier = Modifier.align(Alignment.TopStart)) {
+            Row(
+                modifier = Modifier.align(Alignment.TopStart),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = stringResource(R.string.app_name),
                     fontSize = 22.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                if (streakToday) {
+                if (streakCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔥", fontSize = 22.sp)
+                    Text("🔥 $streakCount", fontSize = 22.sp)
                 }
             }
-
             Row(
                 modifier = Modifier.align(Alignment.TopEnd),
                 verticalAlignment = Alignment.CenterVertically
@@ -150,6 +182,7 @@ fun PomodoroTimer(
             }
         }
 
+        // This Column switches between the timer UI and the completion screen.
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -157,50 +190,111 @@ fun PomodoroTimer(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Dial(
-                knobAngle = knobAngle,
-                onKnobAngleChange = { angle ->
-                    knobAngle = angle
-                    val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
-                    baseSeconds = mins * 60
-                    if (!running) remaining = baseSeconds
-                },
-                remainingTimeFormatted = formatted,
-                running = running
-            )
+            if (timerCompleted) {
+                // Show this UI after the timer finishes.
+                SessionCompleteScreen()
 
-            Spacer(modifier = Modifier.height(40.dp))
+                // This effect handles navigation after a delay.
+                LaunchedEffect(completionCount) {
+                    if (completionCount > 0) {
+                        delay(2000) // Wait for 2 seconds.
 
-            Row {
-                Button(onClick = { running = true }, enabled = !running) {
-                    Text(stringResource(R.string.start))
+                        // Navigate to Summary.
+                        val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
+                            putExtra("SESSION_MINUTES", (baseSeconds / 60).coerceAtLeast(1))
+                        }
+                        context.startActivity(intent)
+
+                        // Reset state for when the user returns.
+                        delay(500)
+                        timerCompleted = false
+                        remaining = baseSeconds
+                    }
                 }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = { running = false }, enabled = running) {
-                    Text(stringResource(R.string.pause))
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(
-                    onClick = {
+
+            } else {
+                // Show the standard timer UI.
+                TimerDialAndControls(
+                    knobAngle = knobAngle,
+                    onKnobAngleChange = { angle ->
+                        knobAngle = angle
+                        val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
+                        baseSeconds = mins * 60
+                        if (!running) remaining = baseSeconds
+                    },
+                    remainingTimeFormatted = formattedTime,
+                    running = running,
+                    onStart = { running = true },
+                    onPause = { running = false },
+                    onReset = {
                         running = false
                         baseSeconds = startMinutes * 60
                         remaining = baseSeconds
                         knobAngle = (startMinutes / 60f) * 360f
-                    }
-                ) {
-                    Text(stringResource(R.string.reset))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(onClick = onBack) {
-                Text(stringResource(R.string.back))
+                    },
+                    onBack = onBack
+                )
             }
         }
     }
 }
 
+/**
+ * A simple UI shown after a session is completed.
+ */
+@Composable
+fun SessionCompleteScreen() {
+    Text("Session Complete!", fontSize = 28.sp, style = MaterialTheme.typography.headlineMedium)
+    Spacer(modifier = Modifier.height(24.dp))
+    CircularProgressIndicator()
+    Spacer(modifier = Modifier.height(16.dp))
+    Text("Loading summary...")
+}
+
+/**
+ * A composable that contains the timer dial and its control buttons.
+ */
+@Composable
+fun TimerDialAndControls(
+    knobAngle: Float,
+    onKnobAngleChange: (Float) -> Unit,
+    remainingTimeFormatted: String,
+    running: Boolean,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onReset: () -> Unit,
+    onBack: () -> Unit
+) {
+    Dial(
+        knobAngle = knobAngle,
+        onKnobAngleChange = onKnobAngleChange,
+        remainingTimeFormatted = remainingTimeFormatted,
+        running = running
+    )
+    Spacer(modifier = Modifier.height(40.dp))
+    Row {
+        Button(onClick = onStart, enabled = !running) {
+            Text(stringResource(R.string.start))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Button(onClick = onPause, enabled = running) {
+            Text(stringResource(R.string.pause))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Button(onClick = onReset) {
+            Text(stringResource(R.string.reset))
+        }
+    }
+    Spacer(modifier = Modifier.height(24.dp))
+    Button(onClick = onBack) {
+        Text(stringResource(R.string.back))
+    }
+}
+
+
+/**
+ * The circular dial for setting and displaying the timer.
+ */
 @Composable
 fun Dial(
     knobAngle: Float,
@@ -214,9 +308,10 @@ fun Dial(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(running) {
+                // Disable dragging the knob while the timer is running.
+                if (running) return@pointerInput
                 detectDragGestures(
                     onDragStart = { offset ->
-                        if (running) return@detectDragGestures
                         val cx = size.width / 2f
                         val cy = size.height / 2f
                         val dx = offset.x - cx
@@ -226,7 +321,6 @@ fun Dial(
                         onKnobAngleChange(normalized)
                     },
                     onDrag = { change, _ ->
-                        if (running) return@detectDragGestures
                         val cx = size.width / 2f
                         val cy = size.height / 2f
                         val dx = change.position.x - cx
@@ -242,6 +336,7 @@ fun Dial(
         val stroke = 20.dp.toPx()
         val radius = min(size.width, size.height) / 2f
 
+        // The background arc of the dial.
         drawArc(
             color = Color.LightGray,
             startAngle = -90f,
@@ -250,6 +345,7 @@ fun Dial(
             style = Stroke(stroke)
         )
 
+        // The foreground arc representing the selected time.
         drawArc(
             color = Color(0xFF4CAF50),
             startAngle = -90f,
@@ -258,13 +354,13 @@ fun Dial(
             style = Stroke(stroke)
         )
 
+        // The digital time display in the center of the dial.
         val paint = android.graphics.Paint().apply {
             isAntiAlias = true
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = 90f
             color = textColor.toArgb()
         }
-
         drawContext.canvas.nativeCanvas.drawText(
             remainingTimeFormatted,
             center.x,
@@ -272,10 +368,10 @@ fun Dial(
             paint
         )
 
+        // The draggable knob on the dial's circumference.
         val rad = Math.toRadians((knobAngle - 90).toDouble())
         val kx = center.x + radius * cos(rad)
         val ky = center.y + radius * sin(rad)
-
         drawCircle(
             color = Color.Black,
             radius = 18.dp.toPx(),
