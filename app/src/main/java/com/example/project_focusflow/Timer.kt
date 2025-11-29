@@ -80,17 +80,6 @@ fun PomodoroTimer(
     }
     val dao = db.focusSessionDao()
 
-    var streakToday by remember { mutableStateOf(false) }
-
-    // Load streak for today
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val s = dao.getStreak(today)
-            streakToday = (s?.count ?: 0) > 0
-        }
-    }
-
     // Sensor events
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
@@ -118,60 +107,67 @@ fun PomodoroTimer(
         if (running && remaining <= 0) {
             running = false
 
-            val sessionMinutes = baseSeconds / 60
+            val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
 
-            // Save session + streak
-            withContext(Dispatchers.IO) {
-                dao.insert(
-                    FocusSession(
-                        durationMinutes = sessionMinutes,
-                        completedAt = System.currentTimeMillis()
-                    )
-                )
-
-                val minutesToday = dao.getMinutesToday() ?: 0
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
-                if (minutesToday >= 25) {
-                    dao.setStreak(
-                        DailyStreak(
-                            date = today,
-                            count = 1
+            try {
+                // Save session
+                withContext(Dispatchers.IO) {
+                    dao.insert(
+                        FocusSession(
+                            durationMinutes = sessionMinutes,
+                            completedAt = System.currentTimeMillis()
                         )
                     )
-                    streakToday = true
                 }
+            } catch (e: Exception) {
+
             }
 
             // Vibrate
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                context.getSystemService(android.os.VibratorManager::class.java).defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-            }
+            try {
+                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(android.os.VibratorManager::class.java)
+                    vm?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(
-                    android.os.VibrationEffect.createOneShot(
-                        400,
-                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                    )
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(400)
+                vibrator?.let {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        it.vibrate(
+                            android.os.VibrationEffect.createOneShot(
+                                400,
+                                android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                            )
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        it.vibrate(400)
+                    }
+                }
+            } catch (e: Exception) {
+                // Any vibration issue is ignored instead of crashing
             }
 
             // Notification
-            showSessionFinishedNotification(context, sessionMinutes)
-
-            // Navigate to summary
-            val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
-                putExtra("SESSION_MINUTES", sessionMinutes)
+            try {
+                showSessionFinishedNotification(context, sessionMinutes)
+            } catch (e: Exception) {
+                // If notification fails ignore instead of crash
             }
-            context.startActivity(intent)
+
+            //  Navigate to summary screen
+            try {
+                val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
+                    putExtra("SESSION_MINUTES", sessionMinutes)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+
+            }
         }
+
     }
 
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
@@ -194,19 +190,19 @@ fun PomodoroTimer(
                     fontSize = 22.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                if (streakToday) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔥", fontSize = 22.sp)
-                }
             }
 
             // Right: dark mode
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.dark),
+                    text = if (darkTheme)
+                        stringResource(R.string.dark_mode)
+                    else
+                        stringResource(R.string.light_mode),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
+
                 Spacer(modifier = Modifier.width(6.dp))
                 Switch(
                     checked = darkTheme,
@@ -240,7 +236,15 @@ fun PomodoroTimer(
             Spacer(modifier = Modifier.height(40.dp))
 
             Row {
-                Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                Button(
+                    onClick = {
+                        if (remaining <= 0) {
+                            remaining = baseSeconds
+                        }
+                        running = true
+                    },
+                    enabled = !running
+                ) {
                     Text(stringResource(R.string.start))
                 }
 

@@ -222,10 +222,14 @@ fun FocusFlowScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.dark_mode),
+                text = if (darkTheme)
+                    stringResource(R.string.dark_mode)
+                else
+                    stringResource(R.string.light_mode),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 14.sp
             )
+
             Spacer(modifier = Modifier.width(8.dp))
             Switch(
                 checked = darkTheme,
