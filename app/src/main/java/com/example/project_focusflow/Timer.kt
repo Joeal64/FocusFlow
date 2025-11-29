@@ -1,17 +1,18 @@
 package com.example.project_focusflow
 
 import android.content.Context
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -21,23 +22,25 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.math.*
+import java.util.Date
+import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
-// The number of minutes required to achieve one streak point.
-private const val STREAK_INTERVAL_MINUTES = 25
+private enum class ConfirmAction {
+    PAUSE, RESET
+}
 
 @Composable
 fun PomodoroTimer(
@@ -51,6 +54,22 @@ fun PomodoroTimer(
     var running by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
 
+    // Safety: never allow zero-length timer
+    if (baseSeconds <= 0) {
+        baseSeconds = 60
+        remaining = baseSeconds
+        knobAngle = (1f / 60f) * 360f
+    }
+
+    // Dialog state
+    var showConfirm by remember { mutableStateOf(false) }
+    var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
+
+    // Block system back while timer is running (focus mode)
+    BackHandler(enabled = running) {
+        // consume back press
+    }
+
     val context = LocalContext.current
     val db = remember {
         Room.databaseBuilder(
@@ -61,211 +80,263 @@ fun PomodoroTimer(
     }
     val dao = db.focusSessionDao()
 
-    var streakCount by remember { mutableStateOf(0) }
-    var timerCompleted by remember { mutableStateOf(false) }
-    var completionCount by remember { mutableStateOf(0) } // Key for re-triggering navigation effect
+    var streakToday by remember { mutableStateOf(false) }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
-
-    // This function fetches the latest streak count from the database.
-    val refreshStreakCount = {
-        coroutineScope.launch(Dispatchers.IO) {
+    // Load streak for today
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            // FIX: This now correctly reads the 'count' property from the DailyStreak object.
-            val currentCount = dao.getStreak(today)?.count ?: 0
-            withContext(Dispatchers.Main) {
-                streakCount = currentCount
-            }
+            val s = dao.getStreak(today)
+            streakToday = (s?.count ?: 0) > 0
         }
     }
 
-    // This effect runs when the screen is first created AND when it becomes visible again.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
-                refreshStreakCount()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        // Set up sensor listeners
+    // Sensor events
+    LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
         SensorEvents.onBluetoothDisconnected = { running = false }
+    }
 
-        // Cleanup function for when the composable leaves the screen
+    DisposableEffect(Unit) {
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
             SensorEvents.onShake = null
             SensorEvents.onBluetoothConnected = null
             SensorEvents.onBluetoothDisconnected = null
         }
     }
 
-    // Main timer countdown logic.
+    // Timer loop
     LaunchedEffect(running) {
-        while (true) {
-            if (running && remaining > 0) {
-                delay(1000)
-                remaining--
-            } else if (running && remaining == 0) {
-                // Timer finished, handle completion logic.
-                val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
+        if (!running) return@LaunchedEffect
 
-                // The notification function from your teammate
-                showSessionFinishedNotification(context, sessionMinutes)
+        while (running && remaining > 0) {
+            delay(1000)
+            remaining--
+        }
 
-                // Perform database operations on a background thread
-                withContext(Dispatchers.IO) {
-                    val minutesBeforeSession = dao.getMinutesToday() ?: 0
-                    val streaksBeforeSession = minutesBeforeSession / STREAK_INTERVAL_MINUTES
+        if (running && remaining <= 0) {
+            running = false
 
-                    dao.insert(FocusSession(durationMinutes = sessionMinutes, completedAt = System.currentTimeMillis()))
+            val sessionMinutes = baseSeconds / 60
 
-                    val minutesAfterSession = dao.getMinutesToday() ?: 0
-                    val streaksAfterSession = minutesAfterSession / STREAK_INTERVAL_MINUTES
+            // Save session + streak
+            withContext(Dispatchers.IO) {
+                dao.insert(
+                    FocusSession(
+                        durationMinutes = sessionMinutes,
+                        completedAt = System.currentTimeMillis()
+                    )
+                )
 
-                    // **Corrected cumulative streak logic**
-                    if (streaksAfterSession > streaksBeforeSession) {
-                        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                        dao.setStreak(DailyStreak(date = today, count = streaksAfterSession))
-                    }
+                val minutesToday = dao.getMinutesToday() ?: 0
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+                if (minutesToday >= 25) {
+                    dao.setStreak(
+                        DailyStreak(
+                            date = today,
+                            count = 1
+                        )
+                    )
+                    streakToday = true
                 }
-                // Stop the timer and trigger the UI update to show the completion screen.
-                running = false
-                timerCompleted = true
-                completionCount++ // This is crucial to re-run the navigation effect
-            } else {
-                // If not running, idle to prevent a busy-wait loop.
-                delay(100)
             }
+
+            // Vibrate
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(android.os.VibratorManager::class.java).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    android.os.VibrationEffect.createOneShot(
+                        400,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(400)
+            }
+
+            // Notification
+            showSessionFinishedNotification(context, sessionMinutes)
+
+            // Navigate to summary
+            val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
+                putExtra("SESSION_MINUTES", sessionMinutes)
+            }
+            context.startActivity(intent)
         }
     }
 
-    val formattedTime = "%02d:%02d".format(remaining / 60, remaining % 60)
+    val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
 
     Box(modifier = Modifier.fillMaxSize()) {
+
         // Top bar
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(modifier = Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
+            // Left: title + streak
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.app_name),
                     fontSize = 22.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                // Use the corrected state variable 'streakCount'
-                if (streakCount > 0) {
+                if (streakToday) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔥 $streakCount", fontSize = 22.sp)
+                    Text("🔥", fontSize = 22.sp)
                 }
             }
-            Row(modifier = Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
+
+            // Right: dark mode
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.dark),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
-            }
-        }
-
-        // This Column switches between the timer UI and the completion screen.
-        Column(
-            modifier = Modifier.fillMaxSize().align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            if (timerCompleted) {
-                // Show this UI after the timer finishes.
-                SessionCompleteScreen()
-
-                // This effect handles navigation AFTER a delay.
-                LaunchedEffect(completionCount) {
-                    if (completionCount > 0) {
-                        delay(2000) // Wait for 2 seconds to show the completion screen.
-
-                        // Navigate to Summary.
-                        val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
-                            putExtra("SESSION_MINUTES", (baseSeconds / 60).coerceAtLeast(1))
-                        }
-                        context.startActivity(intent)
-
-                        // Reset state for when the user returns.
-                        delay(500)
-                        timerCompleted = false
-                        remaining = baseSeconds
-                    }
-                }
-            } else {
-                // Show the standard timer UI.
-                TimerDialAndControls(
-                    knobAngle = knobAngle,
-                    onKnobAngleChange = { angle ->
-                        knobAngle = angle
-                        val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
-                        baseSeconds = mins * 60
-                        if (!running) remaining = baseSeconds
-                    },
-                    remainingTimeFormatted = formattedTime,
-                    running = running,
-                    onStart = { running = true },
-                    onPause = { running = false },
-                    onReset = {
-                        running = false
-                        baseSeconds = startMinutes * 60
-                        remaining = baseSeconds
-                        knobAngle = (startMinutes / 60f) * 360f
-                    },
-                    onBack = onBack
+                Switch(
+                    checked = darkTheme,
+                    onCheckedChange = onDarkThemeChange
                 )
             }
         }
-    }
-}
 
-@Composable
-fun SessionCompleteScreen() {
-    Text("Session Complete!", fontSize = 28.sp, style = MaterialTheme.typography.headlineMedium)
-    Spacer(modifier = Modifier.height(24.dp))
-    CircularProgressIndicator()
-    Spacer(modifier = Modifier.height(16.dp))
-    Text("Loading summary...")
-}
+        // Center content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Dial(
+                knobAngle = knobAngle,
+                onKnobAngleChange = { angle ->
+                    if (!running) {
+                        knobAngle = angle
+                        val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
+                        baseSeconds = mins * 60
+                        remaining = baseSeconds
+                    }
+                },
+                remainingTimeFormatted = formatted,
+                running = running
+            )
 
-@Composable
-fun TimerDialAndControls(
-    knobAngle: Float,
-    onKnobAngleChange: (Float) -> Unit,
-    remainingTimeFormatted: String,
-    running: Boolean,
-    onStart: () -> Unit,
-    onPause: () -> Unit,
-    onReset: () -> Unit,
-    onBack: () -> Unit
-) {
-    Dial(
-        knobAngle = knobAngle,
-        onKnobAngleChange = onKnobAngleChange,
-        remainingTimeFormatted = remainingTimeFormatted,
-        running = running
-    )
-    Spacer(modifier = Modifier.height(40.dp))
-    Row {
-        Button(onClick = onStart, enabled = !running) { Text(stringResource(R.string.start)) }
-        Spacer(modifier = Modifier.width(16.dp))
-        Button(onClick = onPause, enabled = running) { Text(stringResource(R.string.pause)) }
-        Spacer(modifier = Modifier.width(16.dp))
-        Button(onClick = onReset) { Text(stringResource(R.string.reset)) }
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Row {
+                Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                    Text(stringResource(R.string.start))
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Button(
+                    onClick = {
+                        confirmAction = ConfirmAction.PAUSE
+                        showConfirm = true
+                    },
+                    enabled = running
+                ) {
+                    Text(stringResource(R.string.pause))
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Button(
+                    onClick = {
+                        confirmAction = ConfirmAction.RESET
+                        showConfirm = true
+                    }
+                ) {
+                    Text(stringResource(R.string.reset))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = onBack,
+                enabled = !running
+            ) {
+                Text(stringResource(R.string.back))
+            }
+
+            if (running) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Focus mode is ON. Pause or reset to exit.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
+        // Confirmation dialog
+        if (showConfirm && confirmAction != null) {
+            val message = when (confirmAction) {
+                ConfirmAction.PAUSE ->
+                    "Are you sure you want to pause your focus session?"
+                ConfirmAction.RESET ->
+                    "Are you sure you want to reset the timer?"
+                null -> ""
+            }
+
+            AlertDialog(
+                onDismissRequest = {
+                    showConfirm = false
+                    confirmAction = null
+                },
+                title = { Text("Confirm") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            when (confirmAction) {
+                                ConfirmAction.PAUSE -> running = false
+                                ConfirmAction.RESET -> {
+                                    running = false
+                                    baseSeconds = startMinutes * 60
+                                    remaining = baseSeconds
+                                    knobAngle = (startMinutes / 60f) * 360f
+                                }
+                                null -> {}
+                            }
+                            showConfirm = false
+                            confirmAction = null
+                        }
+                    ) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showConfirm = false
+                            confirmAction = null
+                        }
+                    ) {
+                        Text("No")
+                    }
+                }
+            )
+        }
     }
-    Spacer(modifier = Modifier.height(24.dp))
-    Button(onClick = onBack) { Text(stringResource(R.string.back)) }
 }
 
 @Composable
@@ -281,10 +352,9 @@ fun Dial(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(running) {
-                // Disable dragging while the timer is running.
-                if (running) return@pointerInput
                 detectDragGestures(
                     onDragStart = { offset ->
+                        if (running) return@detectDragGestures
                         val cx = size.width / 2f
                         val cy = size.height / 2f
                         val dx = offset.x - cx
@@ -294,6 +364,7 @@ fun Dial(
                         onKnobAngleChange(normalized)
                     },
                     onDrag = { change, _ ->
+                        if (running) return@detectDragGestures
                         val cx = size.width / 2f
                         val cy = size.height / 2f
                         val dx = change.position.x - cx
@@ -350,4 +421,3 @@ fun Dial(
         )
     }
 }
-
