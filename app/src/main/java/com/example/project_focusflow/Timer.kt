@@ -1,3 +1,4 @@
+
 package com.example.project_focusflow
 
 import android.content.Context
@@ -13,8 +14,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,16 +23,12 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,9 +43,6 @@ private enum class ConfirmAction {
     PAUSE, RESET
 }
 
-// The number of minutes required to achieve one streak point.
-private const val STREAK_INTERVAL_MINUTES = 25
-
 @Composable
 fun PomodoroTimer(
     startMinutes: Int,
@@ -63,26 +55,25 @@ fun PomodoroTimer(
     var running by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
 
-    // Safety: never allow zero-length timer
     if (baseSeconds <= 0) {
         baseSeconds = 60
         remaining = baseSeconds
         knobAngle = (1f / 60f) * 360f
     }
 
-    // Dialog state
+    // State for confirmation dialogs
     var showConfirm by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
 
-    // Block system back while timer is running (focus mode)
+    // State for "you left the app" dialog
+    var wasInterrupted by remember { mutableStateOf(false) }
+
+    // Block system back while running (focus mode)
     BackHandler(enabled = running) {
-        // consume back press
+        // consume back press, no action
     }
 
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     val db = remember {
         Room.databaseBuilder(
             context,
@@ -92,39 +83,32 @@ fun PomodoroTimer(
     }
     val dao = db.focusSessionDao()
 
-    // --- STREAK LOGIC ---
-    var streakCount by remember { mutableStateOf(0) }
+    var streakToday by remember { mutableStateOf(false) }
 
-    val refreshStreakCount = {
-        coroutineScope.launch(Dispatchers.IO) {
-            val totalMinutesToday = dao.getMinutesToday() ?: 0
-            val currentStreaks = totalMinutesToday / STREAK_INTERVAL_MINUTES
-            withContext(Dispatchers.Main) {
-                streakCount = currentStreaks
-            }
+    // Load streak for today
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val s = dao.getStreak(today)
+            streakToday = (s?.count ?: 0) > 0
         }
     }
-
-    // Fetch streak count when the screen loads and when it becomes visible again.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
-                refreshStreakCount()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-    // --- END OF STREAK LOGIC ---
-
 
     // Sensor events
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
         SensorEvents.onBluetoothDisconnected = { running = false }
+
+        // App lifecycle events
+        AppLifecycleEvents.onAppBackgrounded = {
+            if (running) {
+                running = false
+                wasInterrupted = true   // will show a dialog when user returns
+            }
+        }
+        AppLifecycleEvents.onAppForegrounded = {
+        }
     }
 
     DisposableEffect(Unit) {
@@ -132,6 +116,8 @@ fun PomodoroTimer(
             SensorEvents.onShake = null
             SensorEvents.onBluetoothConnected = null
             SensorEvents.onBluetoothDisconnected = null
+            AppLifecycleEvents.onAppBackgrounded = null
+            AppLifecycleEvents.onAppForegrounded = null
         }
     }
 
@@ -147,78 +133,59 @@ fun PomodoroTimer(
         if (running && remaining <= 0) {
             running = false
 
-            val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
+            val sessionMinutes = baseSeconds / 60
 
-            try {
-                // --- STREAK UPDATE ON COMPLETION ---
-                withContext(Dispatchers.IO) {
-                    val minutesBefore = dao.getMinutesToday() ?: 0
-                    val streaksBefore = minutesBefore / STREAK_INTERVAL_MINUTES
+            // Save session + streak
+            withContext(Dispatchers.IO) {
+                dao.insert(
+                    FocusSession(
+                        durationMinutes = sessionMinutes,
+                        completedAt = System.currentTimeMillis()
+                    )
+                )
 
-                    dao.insert(
-                        FocusSession(
-                            durationMinutes = sessionMinutes,
-                            completedAt = System.currentTimeMillis()
+                val minutesToday = dao.getMinutesToday() ?: 0
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+                if (minutesToday >= 25) {
+                    dao.setStreak(
+                        DailyStreak(
+                            date = today,
+                            count = 1
                         )
                     )
-
-                    val minutesAfter = dao.getMinutesToday() ?: 0
-                    val streaksAfter = minutesAfter / STREAK_INTERVAL_MINUTES
-
-                    if (streaksAfter > streaksBefore) {
-                        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                        dao.setStreak(DailyStreak(date = today, count = streaksAfter))
-                    }
+                    streakToday = true
                 }
-                // Refresh the UI with the new streak count
-                refreshStreakCount()
-            } catch (e: Exception) {
-                // Database operation failed, ignore to prevent crash
             }
 
             // Vibrate
-            try {
-                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vm = context.getSystemService(android.os.VibratorManager::class.java)
-                    vm?.defaultVibrator
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                }
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(android.os.VibratorManager::class.java).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            }
 
-                vibrator?.let {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        it.vibrate(
-                            android.os.VibrationEffect.createOneShot(
-                                400,
-                                android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                            )
-                        )
-                    } else {
-                        @Suppress("DEPRECATION")
-                        it.vibrate(400)
-                    }
-                }
-            } catch (e: Exception) {
-                // Any vibration issue is ignored instead of crashing
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    android.os.VibrationEffect.createOneShot(
+                        400,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(400)
             }
 
             // Notification
-            try {
-                showSessionFinishedNotification(context, sessionMinutes)
-            } catch (e: Exception) {
-                // If notification fails ignore instead of crash
-            }
+            showSessionFinishedNotification(context, sessionMinutes)
 
-            //  Navigate to summary screen
-            try {
-                val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
-                    putExtra("SESSION_MINUTES", sessionMinutes)
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                // Navigation failed, ignore to prevent crash
+            // Navigate to summary
+            val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
+                putExtra("SESSION_MINUTES", sessionMinutes)
             }
+            context.startActivity(intent)
         }
     }
 
@@ -242,17 +209,16 @@ fun PomodoroTimer(
                     fontSize = 22.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                // --- STREAK DISPLAY ---
-                if (streakCount > 0) {
+                if (streakToday) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔥 $streakCount", fontSize = 22.sp)
+                    Text("🔥", fontSize = 22.sp)
                 }
             }
 
             // Right: dark mode
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.dark_mode), // Simplified for consistency
+                    text = stringResource(R.string.dark),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
@@ -289,15 +255,7 @@ fun PomodoroTimer(
             Spacer(modifier = Modifier.height(40.dp))
 
             Row {
-                Button(
-                    onClick = {
-                        if (remaining <= 0) {
-                            remaining = baseSeconds
-                        }
-                        running = true
-                    },
-                    enabled = !running
-                ) {
+                Button(onClick = { running = true }, enabled = !running && remaining > 0) {
                     Text(stringResource(R.string.start))
                 }
 
@@ -344,7 +302,7 @@ fun PomodoroTimer(
             }
         }
 
-        // Confirmation dialog
+        // Confirmation dialog for Pause / Reset
         if (showConfirm && confirmAction != null) {
             val message = when (confirmAction) {
                 ConfirmAction.PAUSE ->
@@ -389,6 +347,42 @@ fun PomodoroTimer(
                         }
                     ) {
                         Text("No")
+                    }
+                }
+            )
+        }
+
+        // Dialog shown if user left the app while running
+        if (wasInterrupted && !running && !showConfirm) {
+            AlertDialog(
+                onDismissRequest = {
+                    // force them to choose resume or reset
+                },
+                title = { Text("Focus interrupted") },
+                text = {
+                    Text("You left FocusFlow, so your session was paused. Do you want to continue or reset?")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            wasInterrupted = false
+                            running = true   // resume
+                        }
+                    ) {
+                        Text("Continue")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            wasInterrupted = false
+                            running = false
+                            baseSeconds = startMinutes * 60
+                            remaining = baseSeconds
+                            knobAngle = (startMinutes / 60f) * 360f
+                        }
+                    ) {
+                        Text("Reset")
                     }
                 }
             )

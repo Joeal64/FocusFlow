@@ -195,6 +195,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
         // nothing needed
     }
+
+    override fun onStart() {
+        super.onStart()
+        AppLifecycleEvents.onAppForegrounded?.invoke()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppLifecycleEvents.onAppBackgrounded?.invoke()
+    }
 }
 
 @Composable
