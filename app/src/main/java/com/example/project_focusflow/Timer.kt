@@ -24,16 +24,16 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner // Import this
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle // Import this
-import androidx.lifecycle.LifecycleEventObserver // Import this
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch // Import this
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,7 +49,7 @@ private enum class ConfirmAction {
 }
 
 // The number of minutes required to achieve one streak point.
-private const val STREAK_INTERVAL_MINUTES = 1 // Set to 1 for debugging
+private const val STREAK_INTERVAL_MINUTES = 25
 
 @Composable
 fun PomodoroTimer(
@@ -256,7 +256,6 @@ fun PomodoroTimer(
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
-
                 Spacer(modifier = Modifier.width(6.dp))
                 Switch(
                     checked = darkTheme,
@@ -396,7 +395,6 @@ fun PomodoroTimer(
         }
     }
 }
-
 
 @Composable
 fun Dial(
