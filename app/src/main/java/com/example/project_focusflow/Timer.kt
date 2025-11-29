@@ -13,6 +13,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,12 +24,16 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner // Import this
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle // Import this
+import androidx.lifecycle.LifecycleEventObserver // Import this
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch // Import this
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -41,6 +47,9 @@ import kotlin.math.sin
 private enum class ConfirmAction {
     PAUSE, RESET
 }
+
+// The number of minutes required to achieve one streak point.
+private const val STREAK_INTERVAL_MINUTES = 1 // Set to 1 for debugging
 
 @Composable
 fun PomodoroTimer(
@@ -71,6 +80,9 @@ fun PomodoroTimer(
     }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val db = remember {
         Room.databaseBuilder(
             context,
@@ -79,6 +91,34 @@ fun PomodoroTimer(
         ).fallbackToDestructiveMigration().build()
     }
     val dao = db.focusSessionDao()
+
+    // --- STREAK LOGIC ---
+    var streakCount by remember { mutableStateOf(0) }
+
+    val refreshStreakCount = {
+        coroutineScope.launch(Dispatchers.IO) {
+            val totalMinutesToday = dao.getMinutesToday() ?: 0
+            val currentStreaks = totalMinutesToday / STREAK_INTERVAL_MINUTES
+            withContext(Dispatchers.Main) {
+                streakCount = currentStreaks
+            }
+        }
+    }
+
+    // Fetch streak count when the screen loads and when it becomes visible again.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                refreshStreakCount()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    // --- END OF STREAK LOGIC ---
+
 
     // Sensor events
     LaunchedEffect(Unit) {
@@ -110,17 +150,30 @@ fun PomodoroTimer(
             val sessionMinutes = (baseSeconds / 60).coerceAtLeast(1)
 
             try {
-                // Save session
+                // --- STREAK UPDATE ON COMPLETION ---
                 withContext(Dispatchers.IO) {
+                    val minutesBefore = dao.getMinutesToday() ?: 0
+                    val streaksBefore = minutesBefore / STREAK_INTERVAL_MINUTES
+
                     dao.insert(
                         FocusSession(
                             durationMinutes = sessionMinutes,
                             completedAt = System.currentTimeMillis()
                         )
                     )
-                }
-            } catch (e: Exception) {
 
+                    val minutesAfter = dao.getMinutesToday() ?: 0
+                    val streaksAfter = minutesAfter / STREAK_INTERVAL_MINUTES
+
+                    if (streaksAfter > streaksBefore) {
+                        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        dao.setStreak(DailyStreak(date = today, count = streaksAfter))
+                    }
+                }
+                // Refresh the UI with the new streak count
+                refreshStreakCount()
+            } catch (e: Exception) {
+                // Database operation failed, ignore to prevent crash
             }
 
             // Vibrate
@@ -164,10 +217,9 @@ fun PomodoroTimer(
                 }
                 context.startActivity(intent)
             } catch (e: Exception) {
-
+                // Navigation failed, ignore to prevent crash
             }
         }
-
     }
 
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
@@ -190,15 +242,17 @@ fun PomodoroTimer(
                     fontSize = 22.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
+                // --- STREAK DISPLAY ---
+                if (streakCount > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("🔥 $streakCount", fontSize = 22.sp)
+                }
             }
 
             // Right: dark mode
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (darkTheme)
-                        stringResource(R.string.dark_mode)
-                    else
-                        stringResource(R.string.light_mode),
+                    text = stringResource(R.string.dark_mode), // Simplified for consistency
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
@@ -342,6 +396,7 @@ fun PomodoroTimer(
         }
     }
 }
+
 
 @Composable
 fun Dial(
