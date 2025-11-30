@@ -30,7 +30,6 @@ import com.example.project_focusflow.ui.theme.ProjectFocusFlowTheme
 import kotlin.math.sqrt
 import com.example.project_focusflow.R
 
-
 class MainActivity : ComponentActivity(), SensorEventListener {
 
     // shake detector variables
@@ -111,12 +110,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
                         ?: return
 
+                val deviceName = device.name ?: ctx.getString(R.string.bt_unknown_device)
+
                 when (intent.action) {
 
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
                         Toast.makeText(
                             ctx,
-                            "${device.name} connected, starting focus",
+                            ctx.getString(
+                                R.string.bt_connected_starting_focus,
+                                deviceName
+                            ),
                             Toast.LENGTH_SHORT
                         ).show()
 
@@ -126,7 +130,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                         Toast.makeText(
                             ctx,
-                            "${device.name} disconnected, pausing",
+                            ctx.getString(
+                                R.string.bt_disconnected_pausing,
+                                deviceName
+                            ),
                             Toast.LENGTH_SHORT
                         ).show()
 
@@ -152,7 +159,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-        override fun onResume() {
+    override fun onResume() {
         super.onResume()
         accelerometer?.also { sensor ->
             sensorManager.registerListener(
@@ -180,7 +187,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val y = event.values[1]
             val z = event.values[2]
 
-            currentAcceleration = sqrt((x*x + y*y + z*z).toDouble()).toFloat()
+            currentAcceleration = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
             val delta = currentAcceleration - lastAcceleration
             shake = shake * 0.9f + delta
 
@@ -244,7 +251,6 @@ fun FocusFlowScreen(
             Switch(
                 checked = darkTheme,
                 onCheckedChange = onDarkThemeChange
-
             )
         }
 
@@ -259,7 +265,6 @@ fun FocusFlowScreen(
                 fontSize = 32.sp,
                 color = MaterialTheme.colorScheme.onBackground
             )
-
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -298,7 +303,6 @@ fun FocusFlowScreen(
             ) {
                 Text(stringResource(R.string.start_timer))
             }
-
         }
     }
 }

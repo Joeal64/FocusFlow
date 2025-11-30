@@ -66,7 +66,7 @@ fun SummaryScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Well done! You studied for $minutes minutes.",
+            text = stringResource(R.string.summary_message, minutes),
             fontSize = 20.sp,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -74,7 +74,7 @@ fun SummaryScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(onClick = onBackHome) {
-            Text(text = "Back to Focus")
+            Text(text = stringResource(R.string.back_to_focus))
         }
     }
 }

@@ -1,21 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-        <string name="app_name">FocusFlow</string>
-
-        <string name="enter_minutes">Ingresa los minutos que deseas estudiar</string>
-        <string name="start_timer">Iniciar temporizador</string>
-
-        <string name="start">Iniciar</string>
-        <string name="pause">Pausar</string>
-        <string name="reset">Reiniciar</string>
-        <string name="back">Atrás</string>
-
-        <string name="dark_mode">Modo oscuro</string>
-        <string name="dark">Oscuro</string>
-
+    <string name="app_name">FocusFlow</string>
+    <string name="enter_minutes">Ingresa los minutos que deseas estudiar</string>
+    <string name="start_timer">Iniciar temporizador</string>
+    <string name="start">Iniciar</string>
+    <string name="pause">Pausar</string>
+    <string name="reset">Reiniciar</string>
+    <string name="back">Atrás</string>
+    <string name="dark_mode">Modo oscuro</string>
     <string name="light_mode">Modo claro</string>
+    <string name="minutes_error">Por favor ingresa un número válido de minutos.</string>
+    <string name="notif_title_session">Sesión completada</string>
+    <string name="notif_body_session">¡Bien hecho! Estudiaste durante %1$d minutos.</string>
+    <string name="notif_title_bt">Enfoque pausado</string>
+    <string name="notif_body_bt">Bluetooth desconectado. Tu temporizador se ha pausado.</string>
+    <string name="summary_message">¡Bien hecho! Estudiaste durante %1$d minutos.</string>
+    <string name="back_to_focus">Volver a Focus</string>
 
-        <string name="minutes_error">Por favor ingresa un número válido de minutos.</string>
-    </resources>
+    <string name="focus_mode_on_message">
+            El modo de enfoque está ACTIVADO. Pausa o reinicia para salir.
+        </string>
 
+    <string name="confirm_title">Confirmar</string>
+
+    <string name="confirm_pause_message">
+            ¿Seguro que deseas pausar tu sesión de enfoque?
+        </string>
+
+    <string name="confirm_reset_message">
+            ¿Seguro que deseas reiniciar el temporizador?
+        </string>
+
+    <string name="yes">Sí</string>
+    <string name="no">No</string>
+
+    <string name="focus_interrupted_title">Enfoque interrumpido</string>
+
+    <string name="focus_interrupted_message">
+            Saliste de FocusFlow, así que tu sesión se pausó. ¿Deseas continuar o reiniciar?
+        </string>
+
+    <string name="continue_label">Continuar</string>
+
+    <string name="bt_unknown_device">Dispositivo desconocido</string>
+    <string name="bt_connected_starting_focus">%1$s conectado, iniciando enfoque</string>
+    <string name="bt_disconnected_pausing">%1$s desconectado, en pausa</string>
+</resources>

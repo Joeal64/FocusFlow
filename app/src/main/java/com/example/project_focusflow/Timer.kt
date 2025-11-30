@@ -1,4 +1,3 @@
-
 package com.example.project_focusflow
 
 import android.content.Context
@@ -218,11 +217,15 @@ fun PomodoroTimer(
             // Right: dark mode
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.dark),
+                    text = if (darkTheme)
+                        stringResource(R.string.dark_mode)
+                    else
+                        stringResource(R.string.light_mode),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+
+                Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = darkTheme,
                     onCheckedChange = onDarkThemeChange
@@ -295,7 +298,7 @@ fun PomodoroTimer(
             if (running) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Focus mode is ON. Pause or reset to exit.",
+                    text = stringResource(R.string.focus_mode_on_message),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -306,9 +309,9 @@ fun PomodoroTimer(
         if (showConfirm && confirmAction != null) {
             val message = when (confirmAction) {
                 ConfirmAction.PAUSE ->
-                    "Are you sure you want to pause your focus session?"
+                    stringResource(R.string.confirm_pause_message)
                 ConfirmAction.RESET ->
-                    "Are you sure you want to reset the timer?"
+                    stringResource(R.string.confirm_reset_message)
                 null -> ""
             }
 
@@ -317,7 +320,7 @@ fun PomodoroTimer(
                     showConfirm = false
                     confirmAction = null
                 },
-                title = { Text("Confirm") },
+                title = { Text(stringResource(R.string.confirm_title)) },
                 text = { Text(message) },
                 confirmButton = {
                     TextButton(
@@ -336,7 +339,7 @@ fun PomodoroTimer(
                             confirmAction = null
                         }
                     ) {
-                        Text("Yes")
+                        Text(stringResource(R.string.yes))
                     }
                 },
                 dismissButton = {
@@ -346,7 +349,7 @@ fun PomodoroTimer(
                             confirmAction = null
                         }
                     ) {
-                        Text("No")
+                        Text(stringResource(R.string.no))
                     }
                 }
             )
@@ -358,9 +361,9 @@ fun PomodoroTimer(
                 onDismissRequest = {
                     // force them to choose resume or reset
                 },
-                title = { Text("Focus interrupted") },
+                title = { Text(stringResource(R.string.focus_interrupted_title)) },
                 text = {
-                    Text("You left FocusFlow, so your session was paused. Do you want to continue or reset?")
+                    Text(stringResource(R.string.focus_interrupted_message))
                 },
                 confirmButton = {
                     TextButton(
@@ -369,7 +372,7 @@ fun PomodoroTimer(
                             running = true   // resume
                         }
                     ) {
-                        Text("Continue")
+                        Text(stringResource(R.string.continue_label))
                     }
                 },
                 dismissButton = {
@@ -382,7 +385,7 @@ fun PomodoroTimer(
                             knobAngle = (startMinutes / 60f) * 360f
                         }
                     ) {
-                        Text("Reset")
+                        Text(stringResource(R.string.reset))
                     }
                 }
             )
