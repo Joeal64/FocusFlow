@@ -241,6 +241,12 @@ fun PomodoroTimer(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            Text(
+                text = "Drag to put time",
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
             Dial(
                 knobAngle = knobAngle,
                 onKnobAngleChange = { angle ->

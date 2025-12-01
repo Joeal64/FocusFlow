@@ -222,8 +222,6 @@ fun FocusFlowScreen(
     focusLockEnabled: Boolean,
     onFocusLockChange: (Boolean) -> Unit
 ) {
-    var studyMinutes by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     Box(
@@ -268,37 +266,14 @@ fun FocusFlowScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            TextField(
-                value = studyMinutes,
-                onValueChange = {
-                    studyMinutes = it
-                    error = null
-                },
-                placeholder = { Text(stringResource(R.string.enter_minutes)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                isError = error != null,
-                supportingText = {
-                    if (error != null) {
-                        Text(
-                            text = error!!,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            )
+
+
 
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
                 onClick = {
-                    val mins = studyMinutes.toIntOrNull()
-
-                    if (mins == null || mins <= 0) {
-                        error = context.getString(R.string.minutes_error)
-                    } else {
-                        onStart(mins)
-                    }
+                    onStart(25)
                 }
             ) {
                 Text(stringResource(R.string.start_timer))

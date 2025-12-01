@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources><resources>
+    <string name="app_name">专注流</string>
+
+    <string name="dark_mode">深色模式</string>
+    <string name="light_mode">浅色模式</string>
+
+    <string name="start_timer">开始计时</string>
+    <string name="start">开始</string>
+    <string name="pause">暂停</string>
+    <string name="reset">重置</string>
+    <string name="back">返回</string>
+
+    <string name="notif_title_session">学习完成</string>
+    <string name="notif_body_session">做得好！你已学习 %1$d 分钟。</string>
+
+    <string name="notif_title_bt">专注已暂停</string>
+    <string name="notif_body_bt">蓝牙已断开，计时已暂停。</string>
+
+    <string name="focus_mode_on_message">
+        专注模式已开启。暂停或重置以退出。
+    </string>
+
+    <string name="summary_message">做得好！你已学习 %1$d 分钟。</string>
+    <string name="back_to_focus">返回专注</string>
+
+    <string name="confirm_title">确认</string>
+
+    <string name="confirm_pause_message">
+        你确定要暂停专注时间吗？
+    </string>
+
+    <string name="confirm_reset_message">
+        你确定要重置计时器吗？
+    </string>
+
+    <string name="yes">是</string>
+    <string name="no">否</string>
+
+    <string name="focus_interrupted_title">专注被中断</string>
+
+    <string name="focus_interrupted_message">
+        你离开了 FocusFlow，因此你的专注时间已被暂停。你想继续还是重置？
+    </string>
+
+    <string name="continue_label">继续</string>
+
+    <string name="bt_unknown_device">未知设备</string>
+    <string name="bt_connected_starting_focus">%1$s 已连接，开始专注</string>
+    <string name="bt_disconnected_pausing">%1$s 已断开，正在暂停</string>
+</resources>
+</resources>
