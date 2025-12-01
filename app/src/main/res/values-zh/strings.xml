@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><resources>
+<resources>
     <string name="app_name">专注流</string>
 
     <string name="dark_mode">深色模式</string>
@@ -48,5 +48,4 @@
     <string name="bt_unknown_device">未知设备</string>
     <string name="bt_connected_starting_focus">%1$s 已连接，开始专注</string>
     <string name="bt_disconnected_pausing">%1$s 已断开，正在暂停</string>
-</resources>
 </resources>

@@ -3,6 +3,7 @@ package com.example.project_focusflow
 import android.content.Context
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -13,10 +14,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -34,9 +38,8 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.roundToInt
 
 private enum class ConfirmAction {
     PAUSE, RESET
@@ -247,6 +250,7 @@ fun PomodoroTimer(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+            // UPDATED: Pass the new parameters to Dial
             Dial(
                 knobAngle = knobAngle,
                 onKnobAngleChange = { angle ->
@@ -258,7 +262,9 @@ fun PomodoroTimer(
                     }
                 },
                 remainingTimeFormatted = formatted,
-                running = running
+                running = running,
+                remainingSeconds = remaining,
+                totalSeconds = baseSeconds
             )
 
             Spacer(modifier = Modifier.height(40.dp))
@@ -335,9 +341,9 @@ fun PomodoroTimer(
                                 ConfirmAction.PAUSE -> running = false
                                 ConfirmAction.RESET -> {
                                     running = false
-                                    baseSeconds = startMinutes * 60
+                                    // Reset to the initial set time, not the original startMinutes
                                     remaining = baseSeconds
-                                    knobAngle = (startMinutes / 60f) * 360f
+                                    knobAngle = (baseSeconds / 60f / 60f) * 360f
                                 }
                                 null -> {}
                             }
@@ -386,9 +392,9 @@ fun PomodoroTimer(
                         onClick = {
                             wasInterrupted = false
                             running = false
-                            baseSeconds = startMinutes * 60
+                            // Reset to the initial set time
                             remaining = baseSeconds
-                            knobAngle = (startMinutes / 60f) * 360f
+                            knobAngle = (baseSeconds / 60f / 60f) * 360f
                         }
                     ) {
                         Text(stringResource(R.string.reset))
@@ -399,19 +405,38 @@ fun PomodoroTimer(
     }
 }
 
+// FULLY REVISED DIAL COMPOSABLE WITH KNOB POSITION FIXED
 @Composable
 fun Dial(
     knobAngle: Float,
     onKnobAngleChange: (Float) -> Unit,
     remainingTimeFormatted: String,
-    running: Boolean
+    running: Boolean,
+    remainingSeconds: Int,
+    totalSeconds: Int
 ) {
     val textColor = MaterialTheme.colorScheme.onBackground
+
+    // Calculate the angle that represents the timer's state
+    val targetAngle = if (totalSeconds > 0) {
+        (remainingSeconds.toFloat() / totalSeconds.toFloat()) * 360f
+    } else {
+        0f
+    }
+
+    // When not running, the dial should reflect the user's drag gesture (knobAngle).
+    // When running, it should reflect the countdown (targetAngle).
+    // We animate the transition for smoothness.
+    val displayAngle by animateFloatAsState(
+        targetValue = if (running) targetAngle else knobAngle,
+        label = "DialAngleAnimation"
+    )
 
     Canvas(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(running) {
+                // Drag detection logic remains the same
                 detectDragGestures(
                     onDragStart = { offset ->
                         if (running) return@detectDragGestures
@@ -437,25 +462,28 @@ fun Dial(
                 )
             }
     ) {
-        val stroke = 20.dp.toPx()
-        val radius = min(size.width, size.height) / 2f
+        val strokeWidth = 20.dp.toPx()
 
+        // 1. Draw the background track (gray)
         drawArc(
             color = Color.LightGray,
             startAngle = -90f,
             sweepAngle = 360f,
             useCenter = false,
-            style = Stroke(stroke)
+            style = Stroke(strokeWidth)
         )
 
+        // 2. Draw the progress arc (green bit)
+        // This now uses the animated displayAngle, which counts down when running.
         drawArc(
             color = Color(0xFF4CAF50),
             startAngle = -90f,
-            sweepAngle = knobAngle,
+            sweepAngle = displayAngle,
             useCenter = false,
-            style = Stroke(stroke)
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round) // Rounded cap for aesthetics
         )
 
+        // 3. Draw the center text
         val paint = android.graphics.Paint().apply {
             isAntiAlias = true
             textAlign = android.graphics.Paint.Align.CENTER
@@ -470,14 +498,18 @@ fun Dial(
             paint
         )
 
-        val rad = Math.toRadians((knobAngle - 90).toDouble())
-        val kx = center.x + radius * cos(rad)
-        val ky = center.y + radius * sin(rad)
+        // 4. Calculate knob position based on the same displayAngle
+        // **FIXED**: Using the full radius of the canvas to center the knob on the arc.
+        val knobRadius = size.width / 2f
+        val angleInRadians = Math.toRadians((displayAngle - 90).toDouble())
+        val knobX = center.x + knobRadius * cos(angleInRadians)
+        val knobY = center.y + knobRadius * sin(angleInRadians)
 
+        // 5. Draw the knob
         drawCircle(
             color = Color.Black,
             radius = 18.dp.toPx(),
-            center = Offset(kx.toFloat(), ky.toFloat())
+            center = Offset(knobX.toFloat(), knobY.toFloat())
         )
     }
 }
