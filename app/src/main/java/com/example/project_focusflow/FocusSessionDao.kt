@@ -27,7 +27,10 @@ interface FocusSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setStreak(streak: DailyStreak)
 
-    // New query
     @Query("SELECT * FROM daily_streaks WHERE date = :date LIMIT 1")
     suspend fun getStreak(date: String): DailyStreak?
+
+    // --- FIX: ADD THIS MISSING FUNCTION ---
+    @Query("SELECT COUNT(*) FROM daily_streaks")
+    suspend fun getTotalStreaks(): Int
 }
