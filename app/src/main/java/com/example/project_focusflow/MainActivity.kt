@@ -1,5 +1,7 @@
 package com.example.project_focusflow
 
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -286,6 +288,8 @@ fun FocusFlowScreen(
     focusLockEnabled: Boolean,
     onFocusLockChange: (Boolean) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -307,22 +311,43 @@ fun FocusFlowScreen(
                 onCheckedChange = onDarkThemeChange
             )
         }
-
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                fontSize = 32.sp,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = { onStart(25) }
+        if (isLandscape) {
+            // Title and button side-by-side in landscape
+            Row(
+                modifier = Modifier.align(Alignment.Center),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Text(stringResource(R.string.start_timer))
+                Text(
+                    text = stringResource(R.string.app_name),
+                    fontSize = 32.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                Spacer(modifier = Modifier.width(32.dp))
+
+                Button(onClick = { onStart(25) }) {
+                    Text(stringResource(R.string.start_timer))
+                }
+            }
+        } else {
+            // Original portrait layout
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    fontSize = 32.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = { onStart(25) }
+                ) {
+                    Text(stringResource(R.string.start_timer))
+                }
             }
         }
     }

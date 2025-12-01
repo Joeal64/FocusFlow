@@ -1,6 +1,8 @@
 package com.example.project_focusflow
 
 import android.os.Build
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,6 +50,8 @@ fun PomodoroTimer(
     var remaining by remember { mutableStateOf(baseSeconds) }
     var running by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     if (baseSeconds <= 0) {
         baseSeconds = 60
@@ -136,62 +140,141 @@ fun PomodoroTimer(
                 )
             }
         }
+        if (isLandscape) {
+            // landscape
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 56.dp, start = 24.dp, end = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Drag to put time",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    Dial(
+                        knobAngle = knobAngle,
+                        onKnobAngleChange = { angle ->
+                            if (!running) {
+                                knobAngle = angle
+                                val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
+                                baseSeconds = mins * 60
+                                remaining = baseSeconds
+                            }
+                        },
+                        remainingTimeFormatted = formatted,
+                        running = running,
+                        remainingSeconds = remaining,
+                        totalSeconds = baseSeconds
+                    )
+                }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 56.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Drag to put time",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            Dial(
-                knobAngle = knobAngle,
-                onKnobAngleChange = { angle ->
-                    if (!running) {
-                        knobAngle = angle
-                        val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
-                        baseSeconds = mins * 60
-                        remaining = baseSeconds
+                Spacer(modifier = Modifier.width(32.dp))
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Row {
+                        Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                            Text(stringResource(R.string.start))
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Button(
+                            onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true },
+                            enabled = running
+                        ) {
+                            Text(stringResource(R.string.pause))
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Button(
+                            onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }
+                        ) {
+                            Text(stringResource(R.string.reset))
+                        }
                     }
-                },
-                remainingTimeFormatted = formatted,
-                running = running,
-                remainingSeconds = remaining,
-                totalSeconds = baseSeconds
-            )
-            Spacer(modifier = Modifier.height(40.dp))
-            Row {
-                Button(onClick = { running = true }, enabled = !running && remaining > 0) {
-                    Text(stringResource(R.string.start))
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true }, enabled = running) {
-                    Text(stringResource(R.string.pause))
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }) {
-                    Text(stringResource(R.string.reset))
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(onClick = onBack, enabled = !running) {
+                        Text(stringResource(R.string.back))
+                    }
+
+                    if (running) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.focus_mode_on_message),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = onBack, enabled = !running) {
-                Text(stringResource(R.string.back))
-            }
-            if (running) {
-                Spacer(modifier = Modifier.height(8.dp))
+        } else {
+            // portrait
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 56.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
                 Text(
-                    text = stringResource(R.string.focus_mode_on_message),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground
+                    text = "Drag to put time",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
+                Dial(
+                    knobAngle = knobAngle,
+                    onKnobAngleChange = { angle ->
+                        if (!running) {
+                            knobAngle = angle
+                            val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
+                            baseSeconds = mins * 60
+                            remaining = baseSeconds
+                        }
+                    },
+                    remainingTimeFormatted = formatted,
+                    running = running,
+                    remainingSeconds = remaining,
+                    totalSeconds = baseSeconds
+                )
+                Spacer(modifier = Modifier.height(40.dp))
+                Row {
+                    Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                        Text(stringResource(R.string.start))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Button(onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true }, enabled = running) {
+                        Text(stringResource(R.string.pause))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Button(onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }) {
+                        Text(stringResource(R.string.reset))
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = onBack, enabled = !running) {
+                    Text(stringResource(R.string.back))
+                }
+                if (running) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.focus_mode_on_message),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
             }
         }
+
 
         if (showConfirm && confirmAction != null) {
             AlertDialog(
