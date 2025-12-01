@@ -7,15 +7,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -41,9 +34,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
-private enum class ConfirmAction {
-    PAUSE, RESET
-}
+private enum class ConfirmAction { PAUSE, RESET }
 
 @Composable
 fun PomodoroTimer(
@@ -63,17 +54,12 @@ fun PomodoroTimer(
         knobAngle = (1f / 60f) * 360f
     }
 
-    // State for confirmation dialogs
     var showConfirm by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
-
-    // State for "you left the app" dialog
     var wasInterrupted by remember { mutableStateOf(false) }
+    var streakCount by remember { mutableStateOf(0) }
 
-    // Block system back while running (focus mode)
-    BackHandler(enabled = running) {
-        // consume back press, no action
-    }
+    BackHandler(enabled = running) {}
 
     val context = LocalContext.current
     val db = remember {
@@ -85,32 +71,27 @@ fun PomodoroTimer(
     }
     val dao = db.focusSessionDao()
 
-    var streakToday by remember { mutableStateOf(false) }
-
-    // Load streak for today
+    // Load current streak count
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val s = dao.getStreak(today)
-            streakToday = (s?.count ?: 0) > 0
+            streakCount = s?.count ?: 0
         }
     }
 
-    // Sensor events
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { running = false }
         SensorEvents.onBluetoothConnected = { running = true }
         SensorEvents.onBluetoothDisconnected = { running = false }
 
-        // App lifecycle events
         AppLifecycleEvents.onAppBackgrounded = {
             if (running) {
                 running = false
-                wasInterrupted = true   // will show a dialog when user returns
+                wasInterrupted = true
             }
         }
-        AppLifecycleEvents.onAppForegrounded = {
-        }
+        AppLifecycleEvents.onAppForegrounded = {}
     }
 
     DisposableEffect(Unit) {
@@ -134,29 +115,21 @@ fun PomodoroTimer(
 
         if (running && remaining <= 0) {
             running = false
-
             val sessionMinutes = baseSeconds / 60
 
-            // Save session + streak
+            // Save session and increment streak
             withContext(Dispatchers.IO) {
                 dao.insert(
-                    FocusSession(
-                        durationMinutes = sessionMinutes,
-                        completedAt = System.currentTimeMillis()
-                    )
+                    FocusSession(durationMinutes = sessionMinutes, completedAt = System.currentTimeMillis())
                 )
-
-                val minutesToday = dao.getMinutesToday() ?: 0
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
-                if (minutesToday >= 25) {
-                    dao.setStreak(
-                        DailyStreak(
-                            date = today,
-                            count = 1
-                        )
-                    )
-                    streakToday = true
+                // Test logic: 1 minute or more counts as a streak
+                if (sessionMinutes >= 1) {
+                    val existing = dao.getStreak(today)
+                    val newCount = (existing?.count ?: 0) + 1
+                    dao.setStreak(DailyStreak(date = today, count = newCount))
+                    streakCount = newCount
                 }
             }
 
@@ -169,21 +142,16 @@ fun PomodoroTimer(
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(
-                    android.os.VibrationEffect.createOneShot(
-                        400,
-                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                    )
-                )
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(400, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(400)
             }
 
-            // Notification
+            // Show notification
             showSessionFinishedNotification(context, sessionMinutes)
 
-            // Navigate to summary
+            // Launch summary
             val intent = android.content.Intent(context, SummaryActivity::class.java).apply {
                 putExtra("SESSION_MINUTES", sessionMinutes)
             }
@@ -194,8 +162,7 @@ fun PomodoroTimer(
     val formatted = "%02d:%02d".format(remaining / 60, remaining % 60)
 
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // Top bar
+        // Top bar with streak count
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -204,53 +171,32 @@ fun PomodoroTimer(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: title + streak
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    fontSize = 22.sp,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                if (streakToday) {
+                Text(stringResource(R.string.app_name), fontSize = 22.sp, color = MaterialTheme.colorScheme.onBackground)
+                if (streakCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔥", fontSize = 22.sp)
+                    Text("🔥 $streakCount", fontSize = 22.sp)
                 }
             }
 
-            // Right: dark mode
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (darkTheme)
-                        stringResource(R.string.dark_mode)
-                    else
-                        stringResource(R.string.light_mode),
+                    text = if (darkTheme) stringResource(R.string.dark_mode) else stringResource(R.string.light_mode),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 14.sp
                 )
-
                 Spacer(modifier = Modifier.width(8.dp))
-                Switch(
-                    checked = darkTheme,
-                    onCheckedChange = onDarkThemeChange
-                )
+                Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
             }
         }
 
-        // Center content
+        // Center dial and controls
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 56.dp),
+            modifier = Modifier.fillMaxSize().padding(top = 56.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = "Drag to put time",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            // UPDATED: Pass the new parameters to Dial
+            Text("Drag to put time", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(bottom = 16.dp))
             Dial(
                 knobAngle = knobAngle,
                 onKnobAngleChange = { angle ->
@@ -270,142 +216,62 @@ fun PomodoroTimer(
             Spacer(modifier = Modifier.height(40.dp))
 
             Row {
-                Button(onClick = { running = true }, enabled = !running && remaining > 0) {
-                    Text(stringResource(R.string.start))
-                }
-
+                Button(onClick = { running = true }, enabled = !running && remaining > 0) { Text(stringResource(R.string.start)) }
                 Spacer(modifier = Modifier.width(16.dp))
-
-                Button(
-                    onClick = {
-                        confirmAction = ConfirmAction.PAUSE
-                        showConfirm = true
-                    },
-                    enabled = running
-                ) {
-                    Text(stringResource(R.string.pause))
-                }
-
+                Button(onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true }, enabled = running) { Text(stringResource(R.string.pause)) }
                 Spacer(modifier = Modifier.width(16.dp))
-
-                Button(
-                    onClick = {
-                        confirmAction = ConfirmAction.RESET
-                        showConfirm = true
-                    }
-                ) {
-                    Text(stringResource(R.string.reset))
-                }
+                Button(onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }) { Text(stringResource(R.string.reset)) }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = onBack,
-                enabled = !running
-            ) {
-                Text(stringResource(R.string.back))
-            }
+            Button(onClick = onBack, enabled = !running) { Text(stringResource(R.string.back)) }
 
             if (running) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.focus_mode_on_message),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Text(stringResource(R.string.focus_mode_on_message), fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground)
             }
         }
 
-        // Confirmation dialog for Pause / Reset
+        // Confirmation dialog for pause/reset
         if (showConfirm && confirmAction != null) {
             val message = when (confirmAction) {
-                ConfirmAction.PAUSE ->
-                    stringResource(R.string.confirm_pause_message)
-                ConfirmAction.RESET ->
-                    stringResource(R.string.confirm_reset_message)
+                ConfirmAction.PAUSE -> stringResource(R.string.confirm_pause_message)
+                ConfirmAction.RESET -> stringResource(R.string.confirm_reset_message)
                 null -> ""
             }
-
             AlertDialog(
-                onDismissRequest = {
-                    showConfirm = false
-                    confirmAction = null
-                },
+                onDismissRequest = { showConfirm = false; confirmAction = null },
                 title = { Text(stringResource(R.string.confirm_title)) },
                 text = { Text(message) },
                 confirmButton = {
-                    TextButton(
-                        onClick = {
-                            when (confirmAction) {
-                                ConfirmAction.PAUSE -> running = false
-                                ConfirmAction.RESET -> {
-                                    running = false
-                                    // Reset to the initial set time, not the original startMinutes
-                                    remaining = baseSeconds
-                                    knobAngle = (baseSeconds / 60f / 60f) * 360f
-                                }
-                                null -> {}
-                            }
-                            showConfirm = false
-                            confirmAction = null
+                    TextButton(onClick = {
+                        when (confirmAction) {
+                            ConfirmAction.PAUSE -> running = false
+                            ConfirmAction.RESET -> { running = false; remaining = baseSeconds; knobAngle = (baseSeconds / 60f / 60f) * 360f }
+                            null -> {}
                         }
-                    ) {
-                        Text(stringResource(R.string.yes))
-                    }
+                        showConfirm = false
+                        confirmAction = null
+                    }) { Text(stringResource(R.string.yes)) }
                 },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showConfirm = false
-                            confirmAction = null
-                        }
-                    ) {
-                        Text(stringResource(R.string.no))
-                    }
-                }
+                dismissButton = { TextButton(onClick = { showConfirm = false; confirmAction = null }) { Text(stringResource(R.string.no)) } }
             )
         }
 
-        // Dialog shown if user left the app while running
+        // App interrupted dialog
         if (wasInterrupted && !running && !showConfirm) {
             AlertDialog(
-                onDismissRequest = {
-                    // force them to choose resume or reset
-                },
+                onDismissRequest = {},
                 title = { Text(stringResource(R.string.focus_interrupted_title)) },
-                text = {
-                    Text(stringResource(R.string.focus_interrupted_message))
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            wasInterrupted = false
-                            running = true   // resume
-                        }
-                    ) {
-                        Text(stringResource(R.string.continue_label))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            wasInterrupted = false
-                            running = false
-                            // Reset to the initial set time
-                            remaining = baseSeconds
-                            knobAngle = (baseSeconds / 60f / 60f) * 360f
-                        }
-                    ) {
-                        Text(stringResource(R.string.reset))
-                    }
-                }
+                text = { Text(stringResource(R.string.focus_interrupted_message)) },
+                confirmButton = { TextButton(onClick = { wasInterrupted = false; running = true }) { Text(stringResource(R.string.continue_label)) } },
+                dismissButton = { TextButton(onClick = { wasInterrupted = false; running = false; remaining = baseSeconds; knobAngle = (baseSeconds / 60f / 60f) * 360f }) { Text(stringResource(R.string.reset)) } }
             )
         }
     }
 }
 
-// FULLY REVISED DIAL COMPOSABLE WITH KNOB POSITION FIXED
+// Dial composable remains unchanged
 @Composable
 fun Dial(
     knobAngle: Float,
@@ -416,27 +282,13 @@ fun Dial(
     totalSeconds: Int
 ) {
     val textColor = MaterialTheme.colorScheme.onBackground
-
-    // Calculate the angle that represents the timer's state
-    val targetAngle = if (totalSeconds > 0) {
-        (remainingSeconds.toFloat() / totalSeconds.toFloat()) * 360f
-    } else {
-        0f
-    }
-
-    // When not running, the dial should reflect the user's drag gesture (knobAngle).
-    // When running, it should reflect the countdown (targetAngle).
-    // We animate the transition for smoothness.
-    val displayAngle by animateFloatAsState(
-        targetValue = if (running) targetAngle else knobAngle,
-        label = "DialAngleAnimation"
-    )
+    val targetAngle = if (totalSeconds > 0) (remainingSeconds.toFloat() / totalSeconds.toFloat()) * 360f else 0f
+    val displayAngle by animateFloatAsState(targetValue = if (running) targetAngle else knobAngle, label = "DialAngleAnimation")
 
     Canvas(
         modifier = Modifier
             .size(300.dp)
             .pointerInput(running) {
-                // Drag detection logic remains the same
                 detectDragGestures(
                     onDragStart = { offset ->
                         if (running) return@detectDragGestures
@@ -463,53 +315,16 @@ fun Dial(
             }
     ) {
         val strokeWidth = 20.dp.toPx()
+        drawArc(Color.LightGray, startAngle = -90f, sweepAngle = 360f, useCenter = false, style = Stroke(strokeWidth))
+        drawArc(Color(0xFF4CAF50), startAngle = -90f, sweepAngle = displayAngle, useCenter = false, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
 
-        // 1. Draw the background track (gray)
-        drawArc(
-            color = Color.LightGray,
-            startAngle = -90f,
-            sweepAngle = 360f,
-            useCenter = false,
-            style = Stroke(strokeWidth)
-        )
+        val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; textSize = 90f; color = textColor.toArgb() }
+        drawContext.canvas.nativeCanvas.drawText(remainingTimeFormatted, center.x, center.y + paint.textSize / 3, paint)
 
-        // 2. Draw the progress arc (green bit)
-        // This now uses the animated displayAngle, which counts down when running.
-        drawArc(
-            color = Color(0xFF4CAF50),
-            startAngle = -90f,
-            sweepAngle = displayAngle,
-            useCenter = false,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round) // Rounded cap for aesthetics
-        )
-
-        // 3. Draw the center text
-        val paint = android.graphics.Paint().apply {
-            isAntiAlias = true
-            textAlign = android.graphics.Paint.Align.CENTER
-            textSize = 90f
-            color = textColor.toArgb()
-        }
-
-        drawContext.canvas.nativeCanvas.drawText(
-            remainingTimeFormatted,
-            center.x,
-            center.y + paint.textSize / 3,
-            paint
-        )
-
-        // 4. Calculate knob position based on the same displayAngle
-        // **FIXED**: Using the full radius of the canvas to center the knob on the arc.
         val knobRadius = size.width / 2f
         val angleInRadians = Math.toRadians((displayAngle - 90).toDouble())
         val knobX = center.x + knobRadius * cos(angleInRadians)
         val knobY = center.y + knobRadius * sin(angleInRadians)
-
-        // 5. Draw the knob
-        drawCircle(
-            color = Color.Black,
-            radius = 18.dp.toPx(),
-            center = Offset(knobX.toFloat(), knobY.toFloat())
-        )
+        drawCircle(Color.Black, radius = 18.dp.toPx(), center = Offset(knobX.toFloat(), knobY.toFloat()))
     }
 }
