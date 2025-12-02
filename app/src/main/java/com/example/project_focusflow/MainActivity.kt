@@ -1,12 +1,11 @@
 package com.example.project_focusflow
 
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
 import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -28,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +38,7 @@ import androidx.room.Room
 import com.example.project_focusflow.ui.theme.ProjectFocusFlowTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.sqrt
@@ -58,8 +59,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var shake = 0f
 
     private lateinit var db: AppDatabase
-
-    // --- FIX: Add a flag to control the interruption logic ---
     private var isFlowInterrupted = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,8 +84,32 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             var showMainApp by remember { mutableStateOf(false) }
             var minutes by remember { mutableStateOf(25) }
             var darkTheme by remember { mutableStateOf(true) }
-            var focusLock by remember { mutableStateOf(true) }
             var streakCount by remember { mutableStateOf(0) }
+            var isTimerRunning by remember { mutableStateOf(false) }
+            var wasInterrupted by remember { mutableStateOf(false) }
+
+            LaunchedEffect(isTimerRunning) {
+                AppLifecycleEvents.onAppBackgrounded = {
+                    if (isTimerRunning) {
+                        isTimerRunning = false
+                        wasInterrupted = true
+                    }
+                }
+            }
+            DisposableEffect(Unit) {
+                onDispose {
+                    AppLifecycleEvents.onAppBackgrounded = null
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val totalStreaks = db.focusSessionDao().getTotalStreaks()
+                    withContext(Dispatchers.Main) {
+                        streakCount = totalStreaks
+                    }
+                }
+            }
 
             val transparentColor = Color.Transparent
             DisposableEffect(darkTheme) {
@@ -117,28 +140,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onTimerFinish = { sessionMinutes ->
                                 handleTimerFinish(sessionMinutes) { newStreakAchieved ->
                                     if (newStreakAchieved) {
-                                        streakCount++
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val totalStreaks = db.focusSessionDao().getTotalStreaks()
+                                            withContext(Dispatchers.Main) {
+                                                streakCount = totalStreaks
+                                            }
+                                        }
                                     }
                                 }
                             },
                             onGoHome = {
-                                // When going home, re-enable the interruption check
                                 isFlowInterrupted = true
                                 showMainApp = false
-                            }
+                            },
+                            isTimerRunning = isTimerRunning,
+                            onTimerRunningChange = { isTimerRunning = it },
+                            wasInterrupted = wasInterrupted,
+                            onInterruptionHandled = { wasInterrupted = false }
                         )
                     } else {
                         FocusFlowScreen(
                             onStart = { userMinutes ->
                                 minutes = userMinutes
-                                // When starting the timer, enable the interruption check
                                 isFlowInterrupted = true
                                 showMainApp = true
                             },
                             darkTheme = darkTheme,
-                            onDarkThemeChange = { darkTheme = it },
-                            focusLockEnabled = focusLock,
-                            onFocusLockChange = { focusLock = it }
+                            onDarkThemeChange = { darkTheme = it }
                         )
                     }
                 }
@@ -147,30 +175,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun handleTimerFinish(sessionMinutes: Int, onStreakResult: (Boolean) -> Unit) {
-        // --- FIX: Before navigating away, disable the interruption check ---
         isFlowInterrupted = false
-
         Log.d(MAIN_LOG_TAG, "handleTimerFinish called with $sessionMinutes minutes.")
         lifecycleScope.launch(Dispatchers.IO) {
-            // ... (database logic is correct and remains unchanged)
             val dao = db.focusSessionDao()
             var newStreakAchieved = false
             dao.insert(FocusSession(durationMinutes = sessionMinutes, completedAt = System.currentTimeMillis()))
             val minutesToday = dao.getMinutesToday() ?: 0
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val existingStreak = dao.getStreak(today)
+
             val isDebuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
             val requiredMinutes = if (isDebuggable) 1 else 25
-            if (existingStreak == null && minutesToday >= requiredMinutes) {
-                dao.setStreak(DailyStreak(date = today, count = 1))
+            Log.d(MAIN_LOG_TAG, "App is debuggable: $isDebuggable. Required minutes for streak: $requiredMinutes")
+
+            // --- FIX: Logic simplified for testing ---
+            if (minutesToday >= requiredMinutes) {
+                Log.d(MAIN_LOG_TAG, "Streak condition MET. Inserting a new streak entry.")
+                // Always add a new streak entry for every successful session.
+                dao.addStreak(DailyStreak(date = today, count = 1))
                 newStreakAchieved = true
+            } else {
+                Log.d(MAIN_LOG_TAG, "Streak condition NOT MET.")
             }
+
             launch(Dispatchers.Main) {
                 onStreakResult(newStreakAchieved)
             }
         }
-
-        // ... (Vibration and Notification logic is correct)
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(android.os.VibrationEffect.createOneShot(400, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
@@ -179,8 +210,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             vibrator.vibrate(400)
         }
         showSessionFinishedNotification(this, sessionMinutes)
-
-        // Launch Summary Activity
         val intent = Intent(this, SummaryActivity::class.java).apply {
             putExtra("SESSION_MINUTES", sessionMinutes)
         }
@@ -189,7 +218,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        // When the user comes back to the app, re-enable the interruption check
         isFlowInterrupted = true
         accelerometer?.also { sensor ->
             sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
@@ -221,17 +249,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         super.onStart()
         AppLifecycleEvents.onAppForegrounded?.invoke()
     }
-
     override fun onStop() {
         super.onStop()
-        // --- FIX: Only trigger the background event if the flag is true ---
         if (isFlowInterrupted) {
             AppLifecycleEvents.onAppBackgrounded?.invoke()
         }
     }
 }
 
-// MainAppScaffold composable is correct and does not need changes
 @Composable
 fun MainAppScaffold(
     darkTheme: Boolean,
@@ -239,7 +264,11 @@ fun MainAppScaffold(
     streakCount: Int,
     startMinutes: Int,
     onTimerFinish: (Int) -> Unit,
-    onGoHome: () -> Unit
+    onGoHome: () -> Unit,
+    isTimerRunning: Boolean,
+    onTimerRunningChange: (Boolean) -> Unit,
+    wasInterrupted: Boolean,
+    onInterruptionHandled: () -> Unit
 ) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Timer) }
     val screens = listOf(Screen.Timer, Screen.Stats)
@@ -253,7 +282,13 @@ fun MainAppScaffold(
                         icon = { Icon(screen.icon, contentDescription = screen.label) },
                         label = { Text(screen.label) },
                         selected = currentScreen.route == screen.route,
-                        onClick = { currentScreen = screen }
+                        onClick = {
+                            if (!isTimerRunning) {
+                                currentScreen = screen
+                            } else {
+                                AppLifecycleEvents.onAppBackgrounded?.invoke()
+                            }
+                        }
                     )
                 }
             }
@@ -268,7 +303,11 @@ fun MainAppScaffold(
                         darkTheme = darkTheme,
                         onDarkThemeChange = onDarkThemeChange,
                         streakCount = streakCount,
-                        onTimerFinish = onTimerFinish
+                        onTimerFinish = onTimerFinish,
+                        isTimerRunning = isTimerRunning,
+                        onTimerRunningChange = onTimerRunningChange,
+                        wasInterrupted = wasInterrupted,
+                        onInterruptionHandled = onInterruptionHandled
                     )
                 }
                 Screen.Stats -> {
@@ -279,17 +318,15 @@ fun MainAppScaffold(
     }
 }
 
-// FocusFlowScreen composable is correct and does not need changes
 @Composable
 fun FocusFlowScreen(
     onStart: (Int) -> Unit,
     darkTheme: Boolean,
-    onDarkThemeChange: (Boolean) -> Unit,
-    focusLockEnabled: Boolean,
-    onFocusLockChange: (Boolean) -> Unit
+    onDarkThemeChange: (Boolean) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -306,13 +343,10 @@ fun FocusFlowScreen(
                 fontSize = 14.sp
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-                checked = darkTheme,
-                onCheckedChange = onDarkThemeChange
-            )
+            Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
         }
+
         if (isLandscape) {
-            // Title and button side-by-side in landscape
             Row(
                 modifier = Modifier.align(Alignment.Center),
                 verticalAlignment = Alignment.CenterVertically,
@@ -323,15 +357,12 @@ fun FocusFlowScreen(
                     fontSize = 32.sp,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-
                 Spacer(modifier = Modifier.width(32.dp))
-
                 Button(onClick = { onStart(25) }) {
                     Text(stringResource(R.string.start_timer))
                 }
             }
         } else {
-            // Original portrait layout
             Column(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -343,9 +374,7 @@ fun FocusFlowScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = { onStart(25) }
-                ) {
+                Button(onClick = { onStart(25) }) {
                     Text(stringResource(R.string.start_timer))
                 }
             }

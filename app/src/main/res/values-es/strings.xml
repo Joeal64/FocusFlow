@@ -38,7 +38,7 @@
     <string name="focus_interrupted_title">Enfoque interrumpido</string>
 
     <string name="focus_interrupted_message">
-            Saliste de FocusFlow, así que tu sesión se pausó. ¿Deseas continuar o reiniciar?
+            Saliste de Focus Mode, así que tu sesión se pausó. ¿Deseas continuar o reiniciar?
         </string>
 
     <string name="continue_label">Continuar</string>

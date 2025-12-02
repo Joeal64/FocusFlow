@@ -40,7 +40,7 @@
     <string name="focus_interrupted_title">专注被中断</string>
 
     <string name="focus_interrupted_message">
-        你离开了 FocusFlow，因此你的专注时间已被暂停。你想继续还是重置？
+        你离开了 Focus Mode，因此你的专注时间已被暂停。你想继续还是重置？
     </string>
 
     <string name="continue_label">继续</string>

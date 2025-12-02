@@ -1,8 +1,7 @@
 package com.example.project_focusflow
 
-import android.os.Build
 import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
+import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
@@ -22,6 +21,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,11 +44,15 @@ fun PomodoroTimer(
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
     streakCount: Int,
-    onTimerFinish: (sessionMinutes: Int) -> Unit
+    onTimerFinish: (sessionMinutes: Int) -> Unit,
+    isTimerRunning: Boolean,
+    onTimerRunningChange: (Boolean) -> Unit,
+    // It now receives interruption state from the parent
+    wasInterrupted: Boolean,
+    onInterruptionHandled: () -> Unit
 ) {
     var baseSeconds by remember { mutableStateOf(startMinutes * 60) }
     var remaining by remember { mutableStateOf(baseSeconds) }
-    var running by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableStateOf((startMinutes / 60f) * 360f) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -61,21 +65,15 @@ fun PomodoroTimer(
 
     var showConfirm by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
-    var wasInterrupted by remember { mutableStateOf(false) }
+    // local `wasInterrupted` state is removed
 
-    BackHandler(enabled = running) { /* consume back press */ }
+    BackHandler(enabled = isTimerRunning) { /* consume back press */ }
 
+    // App lifecycle events are removed from here
     LaunchedEffect(Unit) {
-        SensorEvents.onShake = { running = false }
-        SensorEvents.onBluetoothConnected = { running = true }
-        SensorEvents.onBluetoothDisconnected = { running = false }
-        AppLifecycleEvents.onAppBackgrounded = {
-            if (running) {
-                running = false
-                wasInterrupted = true
-            }
-        }
-        AppLifecycleEvents.onAppForegrounded = {}
+        SensorEvents.onShake = { onTimerRunningChange(false) }
+        SensorEvents.onBluetoothConnected = { onTimerRunningChange(true) }
+        SensorEvents.onBluetoothDisconnected = { onTimerRunningChange(false) }
     }
 
     DisposableEffect(Unit) {
@@ -83,24 +81,20 @@ fun PomodoroTimer(
             SensorEvents.onShake = null
             SensorEvents.onBluetoothConnected = null
             SensorEvents.onBluetoothDisconnected = null
-            AppLifecycleEvents.onAppBackgrounded = null
-            AppLifecycleEvents.onAppForegrounded = null
         }
     }
 
-    LaunchedEffect(running) {
-        if (!running) return@LaunchedEffect
-        val wasTimerRunning = running
+    LaunchedEffect(isTimerRunning) {
+        if (!isTimerRunning) return@LaunchedEffect
+        val wasTimerRunning = isTimerRunning
         Log.d(TIMER_LOG_TAG, "Timer started. Remaining: $remaining seconds.")
-        while (running && remaining > 0) {
+        while (isTimerRunning && remaining > 0) {
             delay(1000)
             remaining--
         }
         if (wasTimerRunning && remaining <= 0) {
             Log.d(TIMER_LOG_TAG, "Timer finished in Composable. Calling onTimerFinish.")
-            // --- FIX: Set running to false BEFORE calling the callback ---
-            // This immediately disables the BackHandler and exits focus mode.
-            running = false
+            onTimerRunningChange(false)
             onTimerFinish(baseSeconds / 60)
         }
     }
@@ -134,14 +128,10 @@ fun PomodoroTimer(
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Switch(
-                    checked = darkTheme,
-                    onCheckedChange = onDarkThemeChange
-                )
+                Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
             }
         }
         if (isLandscape) {
-            // landscape
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -149,9 +139,7 @@ fun PomodoroTimer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "Drag to put time",
                         fontSize = 16.sp,
@@ -161,7 +149,7 @@ fun PomodoroTimer(
                     Dial(
                         knobAngle = knobAngle,
                         onKnobAngleChange = { angle ->
-                            if (!running) {
+                            if (!isTimerRunning) {
                                 knobAngle = angle
                                 val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
                                 baseSeconds = mins * 60
@@ -169,44 +157,37 @@ fun PomodoroTimer(
                             }
                         },
                         remainingTimeFormatted = formatted,
-                        running = running,
+                        running = isTimerRunning,
                         remainingSeconds = remaining,
                         totalSeconds = baseSeconds
                     )
                 }
-
                 Spacer(modifier = Modifier.width(32.dp))
-
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Row {
-                        Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                        Button(onClick = { onTimerRunningChange(true) }, enabled = !isTimerRunning && remaining > 0) {
                             Text(stringResource(R.string.start))
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Button(
                             onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true },
-                            enabled = running
+                            enabled = isTimerRunning
                         ) {
                             Text(stringResource(R.string.pause))
                         }
                         Spacer(modifier = Modifier.width(16.dp))
-                        Button(
-                            onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }
-                        ) {
+                        Button(onClick = { confirmAction = ConfirmAction.RESET; showConfirm = true }) {
                             Text(stringResource(R.string.reset))
                         }
                     }
-
                     Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(onClick = onBack, enabled = !running) {
+                    Button(onClick = onBack, enabled = !isTimerRunning) {
                         Text(stringResource(R.string.back))
                     }
-
-                    if (running) {
+                    if (isTimerRunning) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = stringResource(R.string.focus_mode_on_message),
@@ -217,7 +198,6 @@ fun PomodoroTimer(
                 }
             }
         } else {
-            // portrait
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -234,7 +214,7 @@ fun PomodoroTimer(
                 Dial(
                     knobAngle = knobAngle,
                     onKnobAngleChange = { angle ->
-                        if (!running) {
+                        if (!isTimerRunning) {
                             knobAngle = angle
                             val mins = ((angle / 360f) * 60).roundToInt().coerceIn(1, 60)
                             baseSeconds = mins * 60
@@ -242,17 +222,17 @@ fun PomodoroTimer(
                         }
                     },
                     remainingTimeFormatted = formatted,
-                    running = running,
+                    running = isTimerRunning,
                     remainingSeconds = remaining,
                     totalSeconds = baseSeconds
                 )
                 Spacer(modifier = Modifier.height(40.dp))
                 Row {
-                    Button(onClick = { running = true }, enabled = !running && remaining > 0) {
+                    Button(onClick = { onTimerRunningChange(true) }, enabled = !isTimerRunning && remaining > 0) {
                         Text(stringResource(R.string.start))
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Button(onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true }, enabled = running) {
+                    Button(onClick = { confirmAction = ConfirmAction.PAUSE; showConfirm = true }, enabled = isTimerRunning) {
                         Text(stringResource(R.string.pause))
                     }
                     Spacer(modifier = Modifier.width(16.dp))
@@ -261,10 +241,10 @@ fun PomodoroTimer(
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = onBack, enabled = !running) {
+                Button(onClick = onBack, enabled = !isTimerRunning) {
                     Text(stringResource(R.string.back))
                 }
-                if (running) {
+                if (isTimerRunning) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = stringResource(R.string.focus_mode_on_message),
@@ -275,7 +255,6 @@ fun PomodoroTimer(
             }
         }
 
-
         if (showConfirm && confirmAction != null) {
             AlertDialog(
                 onDismissRequest = { showConfirm = false; confirmAction = null },
@@ -285,9 +264,9 @@ fun PomodoroTimer(
                     TextButton(
                         onClick = {
                             when (confirmAction) {
-                                ConfirmAction.PAUSE -> running = false
+                                ConfirmAction.PAUSE -> onTimerRunningChange(false)
                                 ConfirmAction.RESET -> {
-                                    running = false
+                                    onTimerRunningChange(false)
                                     remaining = baseSeconds
                                     knobAngle = (baseSeconds / 60f / 60f) * 360f
                                 }
@@ -303,17 +282,24 @@ fun PomodoroTimer(
                 }
             )
         }
-        if (wasInterrupted && !running && !showConfirm) {
+
+        // The dialog is now shown based on the state passed from MainActivity
+        if (wasInterrupted && !isTimerRunning && !showConfirm) {
             AlertDialog(
                 onDismissRequest = { /* force choice */ },
                 title = { Text(stringResource(R.string.focus_interrupted_title)) },
                 text = { Text(stringResource(R.string.focus_interrupted_message)) },
-                confirmButton = { TextButton(onClick = { wasInterrupted = false; running = true }) { Text(stringResource(R.string.continue_label)) } },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onInterruptionHandled() // Clear the state
+                        onTimerRunningChange(true) // Resume
+                    }) { Text(stringResource(R.string.continue_label)) }
+                },
                 dismissButton = {
                     TextButton(
                         onClick = {
-                            wasInterrupted = false
-                            running = false
+                            onInterruptionHandled() // Clear the state
+                            onTimerRunningChange(false) // Just dismiss
                             remaining = baseSeconds
                             knobAngle = (baseSeconds / 60f / 60f) * 360f
                         }

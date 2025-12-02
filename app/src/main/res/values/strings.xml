@@ -29,7 +29,7 @@
 
     <string name="focus_interrupted_title">Focus interrupted</string>
     <string name="focus_interrupted_message">
-        You left FocusFlow, so your session was paused. Do you want to continue or reset?
+        You attempted to leave Focus Mode, so your session was paused. Do you want to continue or reset?
     </string>
 
     <string name="continue_label">Continue</string>
