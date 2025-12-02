@@ -5,7 +5,6 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-
 android {
     namespace = "com.example.project_focusflow"
     compileSdk = 36
@@ -29,6 +28,7 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -52,8 +52,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // --- FIX: ADD THIS LINE FOR EXTENDED ICONS LIKE 'BarChart' ---
+    // Extended Material Icons
     implementation("androidx.compose.material:material-icons-extended")
+
+    // --- ADDED: Compose Google Fonts support ---
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.5")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -62,8 +65,9 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Room
     implementation("androidx.room:room-runtime:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-
 }

@@ -1,6 +1,7 @@
 package com.example.project_focusflow
 
 import android.content.res.Configuration
+import android.graphics.Paint
 import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -18,6 +19,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,7 +49,6 @@ fun PomodoroTimer(
     onTimerFinish: (sessionMinutes: Int) -> Unit,
     isTimerRunning: Boolean,
     onTimerRunningChange: (Boolean) -> Unit,
-    // It now receives interruption state from the parent
     wasInterrupted: Boolean,
     onInterruptionHandled: () -> Unit
 ) {
@@ -65,11 +66,9 @@ fun PomodoroTimer(
 
     var showConfirm by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<ConfirmAction?>(null) }
-    // local `wasInterrupted` state is removed
 
-    BackHandler(enabled = isTimerRunning) { /* consume back press */ }
+    BackHandler(enabled = isTimerRunning) { }
 
-    // App lifecycle events are removed from here
     LaunchedEffect(Unit) {
         SensorEvents.onShake = { onTimerRunningChange(false) }
         SensorEvents.onBluetoothConnected = { onTimerRunningChange(true) }
@@ -86,14 +85,12 @@ fun PomodoroTimer(
 
     LaunchedEffect(isTimerRunning) {
         if (!isTimerRunning) return@LaunchedEffect
-        val wasTimerRunning = isTimerRunning
-        Log.d(TIMER_LOG_TAG, "Timer started. Remaining: $remaining seconds.")
+        val wasRunning = isTimerRunning
         while (isTimerRunning && remaining > 0) {
             delay(1000)
             remaining--
         }
-        if (wasTimerRunning && remaining <= 0) {
-            Log.d(TIMER_LOG_TAG, "Timer finished in Composable. Calling onTimerFinish.")
+        if (wasRunning && remaining <= 0) {
             onTimerRunningChange(false)
             onTimerFinish(baseSeconds / 60)
         }
@@ -131,6 +128,7 @@ fun PomodoroTimer(
                 Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
             }
         }
+
         if (isLandscape) {
             Row(
                 modifier = Modifier
@@ -255,11 +253,18 @@ fun PomodoroTimer(
             }
         }
 
+        // Confirm dialog
         if (showConfirm && confirmAction != null) {
             AlertDialog(
                 onDismissRequest = { showConfirm = false; confirmAction = null },
                 title = { Text(stringResource(R.string.confirm_title)) },
-                text = { Text(if (confirmAction == ConfirmAction.PAUSE) stringResource(R.string.confirm_pause_message) else stringResource(R.string.confirm_reset_message)) },
+                text = {
+                    Text(
+                        if (confirmAction == ConfirmAction.PAUSE)
+                            stringResource(R.string.confirm_pause_message)
+                        else stringResource(R.string.confirm_reset_message)
+                    )
+                },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -268,7 +273,7 @@ fun PomodoroTimer(
                                 ConfirmAction.RESET -> {
                                     onTimerRunningChange(false)
                                     remaining = baseSeconds
-                                    knobAngle = (baseSeconds / 60f / 60f) * 360f
+                                    knobAngle = (baseSeconds / 60f) * 6f
                                 }
                                 null -> {}
                             }
@@ -278,30 +283,32 @@ fun PomodoroTimer(
                     ) { Text(stringResource(R.string.yes)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showConfirm = false; confirmAction = null }) { Text(stringResource(R.string.no)) }
+                    TextButton(onClick = { showConfirm = false; confirmAction = null }) {
+                        Text(stringResource(R.string.no))
+                    }
                 }
             )
         }
 
-        // The dialog is now shown based on the state passed from MainActivity
+        // Interruption dialog
         if (wasInterrupted && !isTimerRunning && !showConfirm) {
             AlertDialog(
-                onDismissRequest = { /* force choice */ },
+                onDismissRequest = { },
                 title = { Text(stringResource(R.string.focus_interrupted_title)) },
                 text = { Text(stringResource(R.string.focus_interrupted_message)) },
                 confirmButton = {
                     TextButton(onClick = {
-                        onInterruptionHandled() // Clear the state
-                        onTimerRunningChange(true) // Resume
+                        onInterruptionHandled()
+                        onTimerRunningChange(true)
                     }) { Text(stringResource(R.string.continue_label)) }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = {
-                            onInterruptionHandled() // Clear the state
-                            onTimerRunningChange(false) // Just dismiss
+                            onInterruptionHandled()
+                            onTimerRunningChange(false)
                             remaining = baseSeconds
-                            knobAngle = (baseSeconds / 60f / 60f) * 360f
+                            knobAngle = (baseSeconds / 60f) * 6f
                         }
                     ) { Text(stringResource(R.string.reset)) }
                 }
@@ -319,12 +326,19 @@ fun Dial(
     remainingSeconds: Int,
     totalSeconds: Int
 ) {
+    // Capture theme colors outside Canvas
+    val primaryColor = MaterialTheme.colorScheme.primary
     val textColor = MaterialTheme.colorScheme.onBackground
-    val targetAngle = if (totalSeconds > 0) (remainingSeconds.toFloat() / totalSeconds.toFloat()) * 360f else 0f
+
+    val targetAngle = if (totalSeconds > 0)
+        (remainingSeconds.toFloat() / totalSeconds.toFloat()) * 360f
+    else 0f
+
     val displayAngle by animateFloatAsState(
         targetValue = if (running) targetAngle else knobAngle,
         label = "DialAngleAnimation"
     )
+
     Canvas(
         modifier = Modifier
             .size(300.dp)
@@ -355,6 +369,7 @@ fun Dial(
             }
     ) {
         val strokeWidth = 20.dp.toPx()
+
         drawArc(
             color = Color.LightGray,
             startAngle = -90f,
@@ -362,29 +377,36 @@ fun Dial(
             useCenter = false,
             style = Stroke(strokeWidth)
         )
+
         drawArc(
-            color = Color(0xFF4CAF50),
+            color = primaryColor, // use captured value
             startAngle = -90f,
             sweepAngle = displayAngle,
             useCenter = false,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
-        val paint = android.graphics.Paint().apply {
-            isAntiAlias = true
-            textAlign = android.graphics.Paint.Align.CENTER
-            textSize = 90f
-            color = textColor.toArgb()
+
+        drawIntoCanvas {
+            val paint = Paint().apply {
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+                // --- FIX: Change the font size from 80.sp to 60.sp ---
+                textSize = 60.sp.toPx()
+                color = textColor.toArgb()
+            }
+            it.nativeCanvas.drawText(
+                remainingTimeFormatted,
+                center.x,
+                center.y + paint.textSize / 3,
+                paint
+            )
         }
-        drawContext.canvas.nativeCanvas.drawText(
-            remainingTimeFormatted,
-            center.x,
-            center.y + paint.textSize / 3,
-            paint
-        )
+
         val knobRadius = size.width / 2f
         val angleInRadians = Math.toRadians((displayAngle - 90).toDouble())
         val knobX = center.x + knobRadius * cos(angleInRadians)
         val knobY = center.y + knobRadius * sin(angleInRadians)
+
         drawCircle(
             color = Color.Black,
             radius = 18.dp.toPx(),
@@ -392,3 +414,4 @@ fun Dial(
         )
     }
 }
+

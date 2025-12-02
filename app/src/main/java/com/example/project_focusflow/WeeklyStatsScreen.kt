@@ -42,54 +42,45 @@ fun WeeklyStatsScreen(onBack: () -> Unit) {
     var weekDateRange by remember { mutableStateOf("") }
     val textMeasurer = rememberTextMeasurer()
     val textColor = MaterialTheme.colorScheme.onBackground
+    // --- FIX: Capture the primary theme color ---
+    val barColor = MaterialTheme.colorScheme.primary
 
-    // This effect re-fetches data whenever the weekOffset changes
     LaunchedEffect(weekOffset) {
         withContext(Dispatchers.IO) {
             val cal = Calendar.getInstance()
-            // Move calendar to the correct week based on the offset
             cal.add(Calendar.WEEK_OF_YEAR, -weekOffset)
 
-            // --- FIX: Simplified and Corrected Date Logic ---
-
-            // 1. Find the start and end dates of the target week.
-            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek) // Go to the first day of the week (e.g., Monday)
+            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
             val weekStartDate = cal.time
-            cal.add(Calendar.DAY_OF_YEAR, 6) // Go to the last day of the week
+
+            cal.add(Calendar.DAY_OF_YEAR, 6)
             val weekEndDate = cal.time
 
-            // 2. Format the dates for UI display and the database query.
             val weekFormat = SimpleDateFormat("MMM d", Locale.getDefault())
             val querySdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val endDateForQuery = querySdf.format(weekEndDate)
 
-            // Set the date range string for the UI
             weekDateRange = "${weekFormat.format(weekStartDate)} - ${weekFormat.format(weekEndDate)}"
 
-            // 3. Fetch data for the 7-day period ending on our calculated weekEndDate.
             val dbData = dao.getLast7DaysMinutes(endDate = endDateForQuery)
 
-            // 4. Create a complete map for the week to handle days with no data.
             val dayDataMap = mutableMapOf<String, Int>()
-            cal.time = weekStartDate // Reset calendar to the start of the week
+            cal.time = weekStartDate
             for (i in 0..6) {
                 dayDataMap[querySdf.format(cal.time)] = 0
                 cal.add(Calendar.DAY_OF_MONTH, 1)
             }
 
-            // Populate the map with real data from the database
             dbData.forEach { dailyMinutes ->
                 if (dayDataMap.containsKey(dailyMinutes.day)) {
                     dayDataMap[dailyMinutes.day] = dailyMinutes.minutes
                 }
             }
 
-            // Convert the map to a sorted list for predictable chart drawing
             weeklyData = dayDataMap.entries.map { DailyMinutes(it.key, it.value) }.sortedBy { it.day }
         }
     }
 
-    // --- The rest of the UI is correct and remains unchanged ---
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -102,7 +93,6 @@ fun WeeklyStatsScreen(onBack: () -> Unit) {
             Text("Weekly Study Minutes", fontSize = 24.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Week Navigation UI
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -137,8 +127,9 @@ fun WeeklyStatsScreen(onBack: () -> Unit) {
                         val slotStart = index * slotWidth
                         val x = slotStart + (slotWidth - barWidth) / 2
 
+                        // --- FIX: Use the captured blue theme color for the bars ---
                         drawRect(
-                            color = Color(0xFF4CAF50),
+                            color = barColor,
                             topLeft = Offset(x, size.height - barHeight),
                             size = Size(barWidth, barHeight),
                             style = Fill
