@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var lastAcceleration = SensorManager.GRAVITY_EARTH
     private var currentAcceleration = SensorManager.GRAVITY_EARTH
     private var shake = 0f
+    private val bluetoothReceiver = BluetoothReceiver()
+
 
     // Room database instance
     private lateinit var db: AppDatabase
@@ -351,18 +353,29 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onStart() {
         super.onStart()
         AppLifecycleEvents.onAppForegrounded?.invoke()
+
+        // Register Bluetooth receiver
+        val filter = android.content.IntentFilter().apply {
+            addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED)
+        }
+        registerReceiver(bluetoothReceiver, filter)
     }
 
-    // When activity stops: if flow was interrupted, notify app that it’s in background
     override fun onStop() {
         super.onStop()
+
+        // Unregister Bluetooth receiver
+        unregisterReceiver(bluetoothReceiver)
+
         if (isFlowInterrupted) {
             AppLifecycleEvents.onAppBackgrounded?.invoke()
         }
     }
 }
 
-// Main scaffold for the in-app screens, Timer & Stats with bottom navigation
+    // Main scaffold for the in-app screens, Timer & Stats with bottom navigation
 @Composable
 fun MainAppScaffold(
     darkTheme: Boolean,
