@@ -20,24 +20,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.project_focusflow.ui.theme.ProjectFocusFlowTheme
 
+// This Activity shows a summary after a focus session ends
 class SummaryActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // read minutes sent from timer
+        // Read the number of minutes from the Intent sent by the timer screen
         val minutes = intent.getIntExtra("SESSION_MINUTES", 0)
 
         setContent {
+            // State to control dark/light theme
             var darkTheme by remember { mutableStateOf(true) }
+
+            // Wrap UI in app theme
             ProjectFocusFlowTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    // Show the summary screen and pass minutes and back action
                     SummaryScreen(
                         minutes = minutes,
-                        onBackHome = { finish() }   // close this activity
+                        onBackHome = { finish() }   // Close this activity and go back
                     )
                 }
             }
@@ -47,8 +52,8 @@ class SummaryActivity : ComponentActivity() {
 
 @Composable
 fun SummaryScreen(
-    minutes: Int,
-    onBackHome: () -> Unit
+    minutes: Int,          // Number of minutes user focused in this session
+    onBackHome: () -> Unit // What to do when user taps Back button
 ) {
     Column(
         modifier = Modifier
@@ -57,6 +62,7 @@ fun SummaryScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // App name at the top
         Text(
             text = stringResource(R.string.app_name),
             fontSize = 28.sp,
@@ -65,6 +71,7 @@ fun SummaryScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Summary message
         Text(
             text = stringResource(R.string.summary_message, minutes),
             fontSize = 20.sp,
@@ -73,6 +80,7 @@ fun SummaryScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        // Button to go back to main focus screen
         Button(onClick = onBackHome) {
             Text(text = stringResource(R.string.back_to_focus))
         }
